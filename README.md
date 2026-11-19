@@ -71,21 +71,72 @@ edm::render_sfx(blip, out.data());
 edm::write_wav("blip.wav", out.data(), 44100);
 ```
 
-`edm::SlideSfx` is one built-in generator (oscillator + linear
-frequency slide + AD envelope — the old preset model), for when that
-shape is what you want. `edm::SfxParams` is its parameter bundle,
-`edm::sfx_frames` sizes the buffer, `edm::randomize_sfx` makes
-sfxr-style random params, and the params-based `render_sfx` overload
-renders a SlideSfx for you. The named presets (`jump`, `coin`,
-`laser`, `explosion`) left the library in 0.0.4 — they live as local
-functions in `examples/sfx_demo.cxx`.
+`edm::plugins::Slide<Wave>` is one built-in plugin (oscillator +
+linear frequency slide + AD envelope — the old preset model), with
+the wave selected at compile time. `edm::SfxParams` is its
+parameter bundle, `edm::sfx_frames` sizes the buffer,
+`edm::randomize_sfx` makes sfxr-style random params, and the
+params-based `render_sfx` overload renders it for you. The named
+presets (`jump`, `coin`, `laser`, `explosion`) left the library in
+0.0.4 — they live as local functions in `examples/sfx_demo.cxx`.
+See the Plugins section below for writing your own.
+
+## Plugins — `edm::plugins`
+
+The plugin system is the extension point for all user-extensible
+sound content: game SFX today, EDM voices and effects tomorrow.
+Two ways to write one:
+
+1. **Satisfy the concept** — any struct with `float next() noexcept`
+   renders through `edm::render_sfx`, no inheritance needed (the
+   Blip above). Good for trivial generators.
+2. **Inherit the CRTP base** — `edm::plugins::Plugin<Derived>` owns
+   the frame counter, so silence after the duration and `finished()`
+   come for free; you implement only `next_impl()`:
+
+```cpp
+#include <cmath>
+
+#include "edm/buffer.hxx"
+#include "edm/plugins.hxx"
+#include "edm/sfx.hxx"
+#include "edm/wav.hxx"
+
+// A plugin: inherit Plugin<Derived>, implement next_impl().
+// The base handles the duration — no reset() needed, fresh
+// construction is the reset.
+struct Ping : public edm::plugins::Plugin<Ping> {
+  double phase = 0.0;
+  double increment = 880.0 / 44100;
+  Ping(double sample_rate, double seconds)
+      : edm::plugins::Plugin<Ping>(sample_rate, seconds) {}
+  float next_impl() noexcept {
+    const float v = static_cast<float>(std::sin(2.0 * 3.141592653589793 * phase));
+    phase += increment;
+    if (phase >= 1.0) phase -= 1.0;
+    return v;
+  }
+};
+
+edm::Buffer out(4410);
+Ping ping(44100, 0.1);
+edm::render_sfx(ping, out.data());
+edm::write_wav("ping.wav", out.data(), 44100);
+```
 
 Why templates here, and the `Voice` interface for notes? An SFX
 render call takes ONE sound, so compile-time polymorphism costs
-nothing and inlines — no vtable, no indirection. The Sequencer holds
-heterogeneous voices in ONE container, so notes need runtime
-polymorphism (`Voice` + `std::unique_ptr`). Two mechanisms, each for
-a principled reason.
+nothing and inlines — no vtable, no indirection. The CRTP base is
+the same idea for shared machinery: inheritance that shares code
+without dispatching at runtime. The Sequencer holds heterogeneous
+voices in ONE container, so notes need runtime polymorphism
+(`Voice` + `std::unique_ptr`). Two mechanisms, each for a
+principled reason.
+
+Templates are preferred wherever they remove overhead, even when
+they grow the binary — an extra fraction of a MiB is not a
+constraint for this library (it is not written for embedded or
+resource-limited targets).
 
 ## What is in the library
 
@@ -95,8 +146,10 @@ a principled reason.
   `edm::Highpass` (one-pole), `edm::Buffer` (owning PCM float
   buffer), `edm::write_wav` (16-bit mono WAV writer).
 - **SFX** — plugins, not presets: any `float next() noexcept`
-  generator renders through `edm::render_sfx`; `edm::SlideSfx` is
-  one built-in generator. See the SFX section above.
+  generator renders through `edm::render_sfx`;
+  `edm::plugins::Slide<Wave>` is one built-in plugin and
+  `edm::plugins::Plugin<Derived>` the CRTP base for writing your
+  own. See the SFX and Plugins sections above.
 - **Sequencer** — `edm::Pattern` (16th-note step loops),
   `edm::Voice` / `edm::SynthVoice` (note interface + oscillator
   voice), `edm::Sequencer`: notes scheduled at a BPM,

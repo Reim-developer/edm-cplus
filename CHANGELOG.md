@@ -5,6 +5,41 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.0.5] - 2026-11-19
+
+### Added
+
+- `edm::plugins` — the extension point for all user-extensible sound
+  content: game SFX today, EDM voices and effects tomorrow.
+- `edm::plugins::Plugin<Derived>` — a CRTP base for plugins (static
+  inheritance, no virtuals). Inherit it, implement
+  `float next_impl() noexcept`, and the base owns the frame counter:
+  silence after the duration and `finished()` come for free. No
+  `reset()` by design — fresh construction is the reset.
+  Inheritance stays optional: the `SampleGenerator` concept is
+  still the contract.
+- `edm::plugins::Slide<Wave>` — the slide model as a plugin
+  template: per-sample wave selection is compile-time
+  (`if constexpr`), never a runtime switch per sample. When
+  constructing `Slide<W>` directly, `W` wins and `params.wave` is
+  ignored (same rule as `SynthVoice<W>`).
+
+### Changed
+
+- The params-based `render_sfx(SfxParams, Rng, std::span<float>,
+  double)` convenience overload now switches on `params.wave` ONCE
+  per call and renders through the matching `Slide<W>`.
+- Templates are preferred wherever they remove overhead, even when
+  they grow the binary — an extra fraction of a MiB is not a
+  constraint for this library (not embedded).
+
+### Removed
+
+- **Breaking:** `edm::SlideSfx`, replaced by
+  `edm::plugins::Slide<W>`. Output is bit-identical — the refactor
+  changes zero sound. (0.x, no users yet — the break is
+  intentional.)
+
 ## [0.0.4] - 2026-11-19
 
 ### Added
