@@ -5,6 +5,7 @@
 // allocate, so the DSP path stays allocation-free. resize() may
 // allocate and is NOT for the DSP path — size buffers up front.
 
+#include <algorithm>
 #include <cstddef>
 #include <span>
 #include <vector>

@@ -1,33 +1,26 @@
 // WAV writer implementation. See wav.hxx.
+//
+// Uses std::ofstream, not std::fopen: MSVC deprecates fopen (C4996),
+// which is an error under /WX. ofstream is RAII by construction —
+// the file closes on every return path, no deleter needed.
 
 #include "edm/wav.hxx"
 
 #include <algorithm>
 #include <cmath>
 #include <cstdint>
-#include <cstdio>
-#include <memory>
+#include <fstream>
 
 namespace edm {
 
-namespace {
-// FILE handle owned by unique_ptr: fclose runs on every return path.
-// (A named deleter struct: decltype(&std::fclose) trips
-// -Wignored-attributes under -Werror.)
-struct FileDeleter {
-  void operator()(std::FILE* f) const noexcept {
-    if (f != nullptr) std::fclose(f);
-  }
-};
-} // namespace
-
 bool write_wav(const std::string& path, std::span<const float> samples, int sample_rate) {
   if (sample_rate <= 0) return false;
-  std::unique_ptr<std::FILE, FileDeleter> file(std::fopen(path.c_str(), "wb"));
-  if (file == nullptr) return false;
+  std::ofstream out(path, std::ios::binary);
+  if (!out) return false;
 
-  auto put = [&file](const void* p, std::size_t n) {
-    return std::fwrite(p, 1, n, file.get()) == n;
+  auto put = [&out](const void* p, std::size_t n) {
+    out.write(static_cast<const char*>(p), static_cast<std::streamsize>(n));
+    return static_cast<bool>(out);
   };
   auto put32 = [&put](std::uint32_t v) { return put(&v, 4); };
   auto put16 = [&put](std::uint16_t v) { return put(&v, 2); };

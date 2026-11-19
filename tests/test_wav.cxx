@@ -3,26 +3,28 @@
 #include <array>
 #include <cstdint>
 #include <cstdio>
+#include <cstdlib>
 #include <cstring>
+#include <fstream>
 #include <vector>
 
 #include "check.hxx"
 #include "edm/wav.hxx"
 
 namespace {
-// Read the whole file back for inspection.
+// Read the whole file back for inspection. Uses std::ifstream, not
+// std::fopen: MSVC deprecates fopen (C4996), an error under /WX.
 std::vector<unsigned char> read_file(const char* path) {
-  std::FILE* f = std::fopen(path, "rb");
-  if (f == nullptr) return {};
-  std::fseek(f, 0, SEEK_END);
-  const long size = std::ftell(f);
-  std::fseek(f, 0, SEEK_SET);
-  std::vector<unsigned char> data(static_cast<std::size_t>(size > 0 ? size : 0));
-  if (size > 0) {
-    const std::size_t got = std::fread(data.data(), 1, data.size(), f);
-    data.resize(got);
+  std::ifstream in(path, std::ios::binary | std::ios::ate);
+  if (!in) return {};
+  const std::streampos end = in.tellg();
+  if (end < 0) return {};
+  std::vector<unsigned char> data(static_cast<std::size_t>(end));
+  in.seekg(0, std::ios::beg);
+  if (!data.empty()) {
+    in.read(reinterpret_cast<char*>(data.data()), static_cast<std::streamsize>(data.size()));
+    data.resize(static_cast<std::size_t>(in.gcount()));
   }
-  std::fclose(f);
   return data;
 }
 
