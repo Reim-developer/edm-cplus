@@ -12,6 +12,9 @@
 // at its use site (0.0/1.0 levels, the 2*phase-1 saw formula,
 // the 0.5 square duty cycle, 2*pi).
 
+#include <array>
+#include <cstddef>
+
 namespace edm {
 
 // The sample rate everything defaults to when the caller passes a
@@ -46,5 +49,13 @@ inline constexpr int kDefaultSeed = 1234;
 
 // The default note velocity in a Pattern step.
 inline constexpr float kDefaultVelocity = 0.8f;
+
+// The supersaw stack: 7 detuned saws (the classic trance lead).
+// Per-saw gain 0.35/7, so the stack peaks around 0.35 when the
+// saws are in phase (the spike's proven values).
+inline constexpr std::size_t kSupersawVoices = 7;
+inline constexpr std::array<double, kSupersawVoices> kSupersawDetuneCents = {
+    -12.0, -8.0, -4.0, 0.0, 4.0, 8.0, 12.0};
+inline constexpr double kSupersawGain = 0.35;
 
 } // namespace edm

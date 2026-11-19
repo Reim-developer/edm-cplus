@@ -24,6 +24,7 @@ target_sources(edm PRIVATE
   src/sequencer.cxx
   src/section.cxx
   src/kick_voice.cxx
+  src/supersaw_voice.cxx
 )
 target_include_directories(edm PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include)
 

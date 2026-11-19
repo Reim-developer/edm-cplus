@@ -7,7 +7,10 @@
 #include <gtest/gtest.h>
 
 #include "edm/buffer.hxx"
+#include "edm/constants.hxx"
 #include "edm/kick_voice.hxx"
+#include "edm/oscillator.hxx"
+#include "edm/supersaw_voice.hxx"
 #include "edm/voice.hxx"
 
 namespace {
@@ -20,6 +23,14 @@ float window_peak(const edm::Buffer& b, std::size_t from, std::size_t to) {
     if (a > max) max = a;
   }
   return max;
+}
+
+float window_rms(const edm::Buffer& b, std::size_t from, std::size_t to) {
+  double sum = 0.0;
+  for (std::size_t i = from; i < to; ++i) {
+    sum += static_cast<double>(b[i]) * b[i];
+  }
+  return static_cast<float>(std::sqrt(sum / static_cast<double>(to - from)));
 }
 
 // Zero-crossing rate over a window, as a frequency (crossings per
@@ -107,5 +118,101 @@ TEST(KickVoice, RetriggerRestarts) {
 
   for (std::size_t i = 0; i < after.size(); ++i) {
     EXPECT_FLOAT_EQ(after[i], fresh[i]) << "sample " << i;
+  }
+}
+
+// --- SupersawVoice ---
+
+// The stack adds energy over a single saw at the same per-saw
+// gain (0.35/7): 7 detuned saws vs 1 — even fully decorrelated
+// the RMS ratio is sqrt(7) ~= 2.65.
+TEST(SupersawVoice, EnergyAboveSingleSaw) {
+  edm::SupersawVoiceConfig config;
+  edm::SupersawVoice stack(config, kSampleRate);
+  stack.note_on(69, 1.0f);
+  edm::Buffer stacked(static_cast<std::size_t>(0.5 * kSampleRate));
+  render(stack, stacked);
+
+  // One saw, same envelope, same per-saw gain and volume.
+  edm::Oscillator<edm::Wave::Saw> single;
+  single.set_frequency(edm::midi_to_freq(69), kSampleRate);
+  edm::Buffer alone(stacked.size());
+  for (std::size_t i = 0; i < alone.size(); ++i) {
+    const double t = static_cast<double>(i) / kSampleRate;
+    const double env = std::min(1.0, t / config.attack_seconds) *
+                       std::exp(-t / config.decay_seconds);
+    alone[i] = static_cast<float>(single.next() *
+                                  (edm::kSupersawGain / edm::kSupersawVoices) * env *
+                                  config.volume);
+  }
+
+  const std::size_t skip = static_cast<std::size_t>(0.05 * kSampleRate);
+  const float stack_rms = window_rms(stacked, skip, stacked.size());
+  const float single_rms = window_rms(alone, skip, alone.size());
+  EXPECT_GT(stack_rms, 0.02f);  // sounding, after the decay window
+  EXPECT_GT(stack_rms, single_rms * 2.0f);
+}
+
+// Consecutive identical notes render bit-identically: the 7 saw
+// phases reset on every note_on.
+TEST(SupersawVoice, ConsecutiveNotesIdentical) {
+  edm::SupersawVoice voice(edm::SupersawVoiceConfig{}, kSampleRate);
+  voice.note_on(69, 1.0f);
+  edm::Buffer first(static_cast<std::size_t>(0.3 * kSampleRate));
+  render(voice, first);
+  voice.note_on(69, 1.0f);  // retrigger, same note
+  edm::Buffer second(first.size());
+  render(voice, second);
+  EXPECT_GT(window_peak(first, 0, first.size()), 0.1f);
+  for (std::size_t i = 0; i < first.size(); ++i) {
+    EXPECT_FLOAT_EQ(first[i], second[i]) << "sample " << i;
+  }
+}
+
+// Two voices with the same config and notes render bit-identically.
+TEST(SupersawVoice, Deterministic) {
+  edm::SupersawVoice a(edm::SupersawVoiceConfig{}, kSampleRate);
+  edm::SupersawVoice b(edm::SupersawVoiceConfig{}, kSampleRate);
+  a.note_on(74, 0.9f);
+  b.note_on(74, 0.9f);
+  edm::Buffer buffer_a(static_cast<std::size_t>(0.5 * kSampleRate));
+  edm::Buffer buffer_b(buffer_a.size());
+  render(a, buffer_a);
+  render(b, buffer_b);
+  for (std::size_t i = 0; i < buffer_a.size(); ++i) {
+    EXPECT_FLOAT_EQ(buffer_a[i], buffer_b[i]) << "sample " << i;
+  }
+}
+
+// note_off cuts hard (documented: the one-shot envelope has no
+// release stage) — exact silence after the cut.
+TEST(SupersawVoice, NoteOffCutsHard) {
+  edm::SupersawVoice voice(edm::SupersawVoiceConfig{}, kSampleRate);
+  voice.note_on(69, 1.0f);
+  edm::Buffer buffer(static_cast<std::size_t>(0.3 * kSampleRate));
+  for (std::size_t i = 0; i < buffer.size(); ++i) {
+    if (i == static_cast<std::size_t>(0.1 * kSampleRate)) voice.note_off(69);
+    buffer[i] = voice.next();
+  }
+  EXPECT_GT(window_peak(buffer, 0, static_cast<std::size_t>(0.1 * kSampleRate)), 0.1f);
+  for (std::size_t i = static_cast<std::size_t>(0.1 * kSampleRate); i < buffer.size(); ++i) {
+    EXPECT_FLOAT_EQ(buffer[i], 0.0f) << "sample " << i;
+  }
+}
+
+// The envelope ends at attack + 6*decay (1.505 s with the default
+// config): silence well past the end, sound before it.
+TEST(SupersawVoice, SilenceAfterEnvelope) {
+  edm::SupersawVoice voice(edm::SupersawVoiceConfig{}, kSampleRate);
+  voice.note_on(69, 1.0f);
+  edm::Buffer buffer(static_cast<std::size_t>(2.0 * kSampleRate));
+  render(voice, buffer);
+  // Still sounding well before the end (the envelope is exp decay,
+  // so the last 100 ms before the gate are near-silent by design).
+  EXPECT_GT(window_peak(buffer, static_cast<std::size_t>(1.0 * kSampleRate),
+                        static_cast<std::size_t>(1.2 * kSampleRate)),
+            0.001f);
+  for (std::size_t i = static_cast<std::size_t>(1.6 * kSampleRate); i < buffer.size(); ++i) {
+    EXPECT_FLOAT_EQ(buffer[i], 0.0f) << "sample " << i;
   }
 }
