@@ -11,6 +11,9 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 add_library(edm
   src/filter.cxx
 )
+target_sources(edm PRIVATE
+  src/wav.cxx
+)
 target_include_directories(edm PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include)
 
 function(edm_warnings target)
@@ -51,4 +54,10 @@ if(EDM_BUILD_TESTS)
   target_include_directories(test_envelope PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/tests)
   edm_warnings(test_envelope)
   add_test(NAME envelope COMMAND test_envelope)
+
+  add_executable(test_wav tests/test_wav.cxx)
+  target_link_libraries(test_wav PRIVATE edm)
+  target_include_directories(test_wav PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/tests)
+  edm_warnings(test_wav)
+  add_test(NAME wav COMMAND test_wav)
 endif()
