@@ -14,6 +14,7 @@ add_library(edm
 target_sources(edm PRIVATE
   src/wav.cxx
   src/sfx.cxx
+  src/plugins.cxx
   src/pattern.cxx
   src/synth_voice.cxx
   src/sequencer.cxx
