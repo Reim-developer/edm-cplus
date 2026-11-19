@@ -13,6 +13,7 @@ add_library(edm
 )
 target_sources(edm PRIVATE
   src/wav.cxx
+  src/sfx.cxx
 )
 target_include_directories(edm PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include)
 
@@ -64,6 +65,7 @@ if(EDM_BUILD_TESTS)
   edm_test(oscillator)
   edm_test(envelope)
   edm_test(wav)
+  edm_test(sfx)
 
   if(EDM_BUILD_EXAMPLES)
     # tone_renders runs the tone example; wav_validity checks its
