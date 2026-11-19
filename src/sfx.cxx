@@ -83,47 +83,4 @@ SfxParams randomize_sfx(Rng& rng) noexcept {
   return params;
 }
 
-namespace sfx {
-
-SfxParams jump() {
-  return SfxParams{.wave = Wave::Square,
-                   .f0_hz = 300.0,
-                   .f1_hz = 900.0,
-                   .seconds = 0.25,
-                   .volume = 0.5,
-                   .attack_seconds = 0.01,
-                   .decay_seconds = 0.08};
-}
-
-SfxParams coin() {
-  return SfxParams{.wave = Wave::Sine,
-                   .f0_hz = 988.0,
-                   .f1_hz = 1319.0,
-                   .seconds = 0.30,
-                   .volume = 0.5,
-                   .attack_seconds = 0.01,
-                   .decay_seconds = 0.10};
-}
-
-SfxParams laser() {
-  return SfxParams{.wave = Wave::Saw,
-                   .f0_hz = 1200.0,
-                   .f1_hz = 100.0,
-                   .seconds = 0.30,
-                   .volume = 0.5,
-                   .attack_seconds = 0.01,
-                   .decay_seconds = 0.12};
-}
-
-SfxParams explosion() {
-  return SfxParams{.wave = Wave::Noise,
-                   .f0_hz = 800.0,
-                   .f1_hz = 60.0,
-                   .seconds = 0.60,
-                   .volume = 0.7,
-                   .attack_seconds = 0.005,
-                   .decay_seconds = 0.45};
-}
-
-} // namespace sfx
 } // namespace edm

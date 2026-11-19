@@ -8,9 +8,10 @@
 // entirely in user code.
 //
 // A game has more SFX kinds than the library can enumerate, so the
-// library does not try: the v0.0.2 slide model survives as ONE
-// built-in generator, SlideSfx — one plugin among many, not the
-// definition of SFX.
+// library does not try: there are no named sounds here (the v0.0.2
+// presets were removed in 0.0.4; see CHANGELOG.md). The v0.0.2 slide
+// model survives as ONE built-in generator, SlideSfx — one plugin
+// among many, not the definition of SFX.
 //
 // The generic render path is a template, not a virtual interface:
 // an SFX render call takes ONE sound, so compile-time polymorphism
@@ -94,14 +95,4 @@ void render_sfx(SfxParams params, Rng rng, std::span<float> out,
 // [0.05, 0.5] s.
 [[nodiscard]] SfxParams randomize_sfx(Rng& rng) noexcept;
 
-namespace sfx {
-
-// Presets — plain functions returning SfxParams, the spike's proven
-// values.
-[[nodiscard]] SfxParams jump();
-[[nodiscard]] SfxParams coin();
-[[nodiscard]] SfxParams laser();
-[[nodiscard]] SfxParams explosion();
-
-} // namespace sfx
 } // namespace edm
