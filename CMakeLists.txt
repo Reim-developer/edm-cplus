@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.24)
-project(edm-cplus VERSION 0.0.6 LANGUAGES CXX)
+project(edm-cplus VERSION 0.0.7 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -27,6 +27,7 @@ target_sources(edm PRIVATE
   src/supersaw_voice.cxx
   src/noise_voice.cxx
   src/riser_voice.cxx
+  src/arrangement.cxx
 )
 target_include_directories(edm PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include)
 
@@ -53,6 +54,10 @@ if(EDM_BUILD_EXAMPLES)
   add_executable(sequence_demo examples/sequence_demo.cxx)
   target_link_libraries(sequence_demo PRIVATE edm)
   edm_warnings(sequence_demo)
+
+  add_executable(arrangement_demo examples/arrangement_demo.cxx)
+  target_link_libraries(arrangement_demo PRIVATE edm)
+  edm_warnings(arrangement_demo)
 endif()
 
 if(EDM_BUILD_TESTS)
@@ -77,6 +82,7 @@ if(EDM_BUILD_TESTS)
   edm_test(automation)
   edm_test(section)
   edm_test(edm_voices)
+  edm_test(arrangement)
 
   if(EDM_BUILD_EXAMPLES)
     # tone_renders runs the tone example; wav_validity checks its
@@ -91,5 +97,14 @@ if(EDM_BUILD_TESTS)
     add_test(NAME sfx_demo COMMAND sfx_demo ${CMAKE_CURRENT_BINARY_DIR})
 
     add_test(NAME sequence_demo COMMAND sequence_demo ${CMAKE_CURRENT_BINARY_DIR})
+
+    # arrangement_demo renders the 60 s track and checks it
+    # (duration, determinism, RMS ordering, peak, finiteness);
+    # arrangement_wav_validity checks the WAV file itself.
+    add_test(NAME arrangement_demo
+      COMMAND arrangement_demo ${CMAKE_CURRENT_BINARY_DIR}/unity_style.wav)
+    add_test(NAME arrangement_wav_validity
+      COMMAND check_wav ${CMAKE_CURRENT_BINARY_DIR}/unity_style.wav 44100 60.0)
+    set_tests_properties(arrangement_wav_validity PROPERTIES DEPENDS arrangement_demo)
   endif()
 endif()

@@ -5,6 +5,68 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.0.7] - 2026-11-20
+
+### Added
+
+- `edm::Section` — a named span of bars with its own sequencer
+  (moved in, owned). The name is user content, not an enum: the
+  library provides the mechanism, the caller names the parts.
+  Renders in 64-frame blocks, with automations evaluated per
+  block. Patterns may be any length: a pattern as long as the
+  section plays exactly once (the snare-roll shape).
+- `edm::Automation` — a parameter curve over bar positions:
+  `Linear` or `Exponential` (geometric — the right shape for
+  filter sweeps), points sorted at construction, clamped
+  outside the range, empty is a no-op. Bound to a track's
+  volume (`bind_track_volume`) or a filterable voice's cutoff
+  (`bind_filter_cutoff`); binding again replaces the curve.
+- `edm::Arrangement` — the song: sections moved in, rendered in
+  order at one BPM, with `frames()`, `render(span)`, and
+  `render_to_wav`.
+- Sidechain, per section (`Section::enable_sidechain`): the
+  section renders twice (kick-only bus, then music-only bus,
+  each from a reset sequencer) and mixes kick + ducked music,
+  with the gain curve read from the kick pattern's note-on
+  times. Ducking is uniform across the music bus (a deliberate
+  difference from the spike, which ducks the lead less).
+- Four EDM voices, all one-shot and deterministic:
+  `edm::KickVoice` (sine pitch drop 150 → 45 Hz, 0.30 s),
+  `edm::SupersawVoice` (7 detuned saws, plucky one-shot
+  envelope — not the ADSR `Envelope`), `edm::NoiseVoice`
+  (config-driven hats / clap / snare — the kind of sound is
+  data, not a type; the clap's 3-burst gate in the first
+  40 ms), `edm::RiserVoice` (noise through a lowpass sweeping
+  400 → 8000 Hz over a caller-computed duration).
+- `edm::Buffer::normalize(float peak)` — scales so the peak
+  absolute value equals `peak`; a silent buffer stays silent.
+- `edm::kMixNormalizePeak` (0.89) — the master peak the demo
+  normalizes to.
+- `examples/arrangement_demo.cxx` — the 32-bar Unity-style
+  track (128 BPM, D minor, intro / build / drop / breakdown /
+  build2 / drop2, 60 s) rebuilt with the library API. CTest
+  entry checks the render: duration, determinism, section RMS
+  ordering (drop > build > intro > breakdown), peak, and
+  finiteness; the WAV itself is checked by the `check_wav`
+  validator.
+
+### Changed
+
+- `edm::Sequencer` gained per-track mute (`set_track_muted` /
+  `is_track_muted` — a muted track neither fires notes nor
+  renders), track accessors (`track_voice`, `track_pattern`,
+  `track_count`), and `reset()` now fully rewinds voices: a
+  noise voice's Rng rewinds, so render → reset → render is
+  bit-identical.
+- `edm::SynthVoice` gained `set_filter_cutoff(double hz)
+  noexcept` — it enables the filter when built bypassed, and
+  moves the cutoff smoothly (filter state untouched). It is
+  exposed through the new `edm::FilterableVoice` interface
+  (`Voice` + `set_filter_cutoff`), because `SynthVoice` is a
+  template and there is no single type to cast to; Section's
+  cutoff bind casts once at bind time, never in the render
+  loop.
+
 ## [0.0.6] - 2026-11-19
 
 ### Added

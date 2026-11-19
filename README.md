@@ -5,8 +5,9 @@
 Create electronic dance music with C++ code.
 
 A C++20 library for making music with code: a synth core, one-shot
-sound effects, and a sequencer that schedules patterns at a tempo.
-No arrangement or playback yet — those come as later versions.
+sound effects, a sequencer that schedules patterns at a tempo, and
+arrangements that assemble named sections into a song. No playback
+yet — that comes as a later version.
 See [CHANGELOG.md](CHANGELOG.md) for version history.
 
 ## Quickstart
@@ -139,6 +140,102 @@ they grow the binary — an extra fraction of a MiB is not a
 constraint for this library (it is not written for embedded or
 resource-limited targets).
 
+## Arrangement — sections, automation, sidechain
+
+A song is an `edm::Arrangement`: named sections rendered in order
+at one BPM. A section is a span of bars with its own sequencer —
+the name is yours ("intro", "drop"), not an enum; the library
+provides the mechanism, you name the parts. Every section's
+sequencer must be built at the arrangement's BPM (there is no
+check — a mismatched section plays at the wrong tempo).
+
+```cpp
+#include <memory>
+#include <utility>
+
+#include "edm/arrangement.hxx"
+#include "edm/buffer.hxx"
+#include "edm/constants.hxx"
+#include "edm/kick_voice.hxx"
+#include "edm/pattern.hxx"
+#include "edm/section.hxx"
+#include "edm/sequencer.hxx"
+#include "edm/synth_voice.hxx"
+#include "edm/wav.hxx"
+
+// One section: 2 bars, kick + filtered bass, the cutoff opening
+// across the section, the music ducking on every kick.
+edm::Sequencer seq(128.0, 44100);
+edm::Pattern kick(16);
+for (int s = 0; s < 16; s += 4) kick.set(s, 36, 1.0f);
+seq.add_track(std::make_unique<edm::KickVoice>(edm::KickVoiceConfig{}, 44100),
+              std::move(kick));
+
+edm::SynthVoiceConfig bass;
+bass.wave = edm::Wave::Saw;
+bass.filter_cutoff_hz = 500.0;
+edm::Pattern bass_notes(16);
+for (int s = 2; s < 16; s += 4) bass_notes.set(s, 38, 1.0f, 2);
+seq.add_track(edm::make_synth_voice(bass, 44100), std::move(bass_notes));
+
+edm::Section drop("drop", 2, std::move(seq));
+drop.bind_filter_cutoff(1, edm::Automation({{0.0, 500.0}, {2.0, 6000.0}},
+                                           edm::Curve::Exponential));
+drop.enable_sidechain(0);
+
+edm::Arrangement song(128.0, 44100);
+song.add_section(std::move(drop));
+edm::Buffer out(song.frames());
+song.render(out.data());
+out.normalize(edm::kMixNormalizePeak);
+edm::write_wav("song.wav", out.data(), 44100);
+```
+
+**Automation** is a curve over bar positions — `Linear` or
+`Exponential` (the right shape for filter sweeps, since pitch is
+logarithmic) — bound to a track's volume or a filterable voice's
+cutoff. Bindings are evaluated once per 64-frame block, so a
+sweep moves smoothly without a per-sample recompute. Binding
+again replaces the previous curve; binding to a bad track, an
+empty curve, or a non-filterable voice returns `false`.
+
+**Sidechain** is per section: the section renders twice (kick-only
+bus, then music-only bus, each from a reset sequencer) and mixes
+kick + ducked music, with the gain curve read from the kick
+pattern's note-on times (`1 - depth * exp(-t/release)`). The
+ducking is uniform across the whole music bus — the spike this
+round was built from ducks the lead less than the bass, but the
+library has one bus and one curve; per-track depth belongs to a
+future version if anyone asks.
+
+**Patterns may be any length.** A pattern shorter than its section
+loops; a pattern as long as the section plays exactly once. That
+is how a snare roll in the last bar of a build is written: a
+64-step pattern over a 4-bar section, notes only in the last 16
+steps.
+
+**Four EDM voices** ship with this round, all one-shot (note_off
+is a no-op except the supersaw's hard cut) and all deterministic:
+
+- `edm::KickVoice` — sine with a fast exponential pitch drop
+  (150 → 45 Hz) and decay, 0.30 s.
+- `edm::SupersawVoice` — 7 detuned saws under a plucky
+  one-shot envelope (not the ADSR `Envelope` — a lead note
+  decays away on its own).
+- `edm::NoiseVoice` — config-driven hats / clap / snare: the
+  kind of sound is data (filter cutoff, decay, duration,
+  bursts), not a type.
+- `edm::RiserVoice` — noise through a lowpass sweeping
+  exponentially (400 → 8000 Hz) over a caller-computed duration.
+
+**Known limits of this round:** voices do not ring across
+section boundaries (each section resets its sequencer — tails
+belong to the future effects layer); the lead is dry (no delay
+yet — same round); sidechain ducking is uniform (see above).
+`examples/arrangement_demo.cxx` rebuilds the 32-bar Unity-style
+track with the library API (60 s, sections intro / build / drop /
+breakdown / build2 / drop2) — run it and listen.
+
 ## What is in the library
 
 - **Synth core** — `edm::Rng` (deterministic xorshift32),
@@ -154,9 +251,18 @@ resource-limited targets).
 - **Sequencer** — `edm::Pattern` (16th-note step loops),
   `edm::Voice` / `edm::SynthVoice` (note interface + oscillator
   voice), `edm::Sequencer`: notes scheduled at a BPM,
-  sample-accurate step boundaries, gate-aware note on/off.
-  `edm::midi_to_freq<Hz>` converts MIDI notes (default A4 = 440 Hz;
-  `midi_to_freq<432.0>` for alternate concert pitch).
+  sample-accurate step boundaries, gate-aware note on/off,
+  per-track mute. `edm::midi_to_freq<Hz>` converts MIDI notes
+  (default A4 = 440 Hz; `midi_to_freq<432.0>` for alternate
+  concert pitch).
+- **Arrangement** — `edm::Section` (a named span of bars with
+  its own sequencer), `edm::Automation` (linear / exponential
+  parameter curves over bar positions), `edm::Arrangement`
+  (sections in order at one BPM); sidechain ducking per section;
+  four EDM voices — `edm::KickVoice`, `edm::SupersawVoice`,
+  `edm::NoiseVoice` (config-driven hats / clap / snare),
+  `edm::RiserVoice`; `edm::Buffer::normalize` for the master
+  peak. See the Arrangement section above.
 
 Rules the library follows: C++20, `.hxx` headers + `.cxx` sources,
 templates instead of macros, smart pointers / RAII (no raw `new` /
@@ -181,10 +287,12 @@ time (needs network). No Python needed anywhere.
 ./build/tone tone.wav
 ./build/sfx_demo out/
 ./build/sequence_demo out/
+./build/arrangement_demo unity_style.wav
 ```
 
 `tone` renders a one-second tone, `sfx_demo` the SFX presets plus a
-randomized effect, `sequence_demo` a 2-bar sequenced loop.
+randomized effect, `sequence_demo` a 2-bar sequenced loop,
+`arrangement_demo` a 32-bar Unity-style track (60 s).
 
 ## License
 
