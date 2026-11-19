@@ -1,7 +1,10 @@
 // sfx_demo: renders 4 SFX presets + 1 randomized effect to WAVs.
 // The presets are LOCAL functions — the library does not name sounds
-// (0.0.4 removed edm::sfx::*). Same proven values as the old presets,
-// rendered through the generic path via SlideSfx.
+// (0.0.4 removed edm::sfx::*). Same proven values as the old presets.
+// Most effects render through the params-based render_sfx overload
+// (runtime params, dispatched once per call); laser renders through
+// a directly-constructed plugins::Slide<Wave::Saw>, showing both
+// paths to the same output.
 // Usage: sfx_demo [output_dir]  (default: current directory)
 
 #include <algorithm>
@@ -10,6 +13,7 @@
 #include <string>
 
 #include "edm/buffer.hxx"
+#include "edm/plugins.hxx"
 #include "edm/rng.hxx"
 #include "edm/sfx.hxx"
 #include "edm/version.hxx"
@@ -81,11 +85,8 @@ edm::SfxParams explosion() {
                         .decay_seconds = 0.45};
 }
 
-bool render_one(const char* name, const edm::SfxParams& params, const std::string& dir,
-                int sample_rate) {
-  edm::Buffer buffer(edm::sfx_frames(params, sample_rate));
-  edm::SlideSfx gen(params, edm::Rng(1234), sample_rate); // the spike's seed, fresh per effect
-  edm::render_sfx(gen, buffer.data());
+bool write_buffer(const char* name, const edm::Buffer& buffer, const std::string& dir,
+                  int sample_rate) {
   const std::string path = dir + "/sfx_" + name + ".wav";
   if (!edm::write_wav(path, buffer.data(), sample_rate)) {
     std::fprintf(stderr, "failed to write %s\n", path.c_str());
@@ -94,6 +95,27 @@ bool render_one(const char* name, const edm::SfxParams& params, const std::strin
   std::printf("sfx %-10s %zu frames (%.2fs)\n", name, buffer.size(),
               static_cast<double>(buffer.size()) / sample_rate);
   return true;
+}
+
+// Runtime-params path: the convenience overload dispatches once on
+// params.wave to the matching Slide<W>.
+bool render_one(const char* name, const edm::SfxParams& params, const std::string& dir,
+                int sample_rate) {
+  edm::Buffer buffer(edm::sfx_frames(params, sample_rate));
+  edm::render_sfx(params, edm::Rng(1234), buffer.data(), sample_rate); // the spike's seed
+  return write_buffer(name, buffer, dir, sample_rate);
+}
+
+// Compile-time path: a directly-constructed Slide<W>, rendered
+// through the generic path. Same output as the overload (W wins;
+// params.wave is ignored).
+template <edm::Wave W>
+bool render_direct(const char* name, const edm::SfxParams& params, const std::string& dir,
+                   int sample_rate) {
+  edm::Buffer buffer(edm::sfx_frames(params, sample_rate));
+  edm::plugins::Slide<W> gen(params, edm::Rng(1234), sample_rate); // the spike's seed
+  edm::render_sfx(gen, buffer.data());
+  return write_buffer(name, buffer, dir, sample_rate);
 }
 } // namespace
 
@@ -104,7 +126,7 @@ int main(int argc, char** argv) {
   bool ok = true;
   ok = render_one("jump", jump(), dir, kSampleRate) && ok;
   ok = render_one("coin", coin(), dir, kSampleRate) && ok;
-  ok = render_one("laser", laser(), dir, kSampleRate) && ok;
+  ok = render_direct<edm::Wave::Saw>("laser", laser(), dir, kSampleRate) && ok;
   ok = render_one("explosion", explosion(), dir, kSampleRate) && ok;
   edm::Rng rng(7);
   const edm::SfxParams random = edm::randomize_sfx(rng);

@@ -10,8 +10,8 @@
 // A game has more SFX kinds than the library can enumerate, so the
 // library does not try: there are no named sounds here (the v0.0.2
 // presets were removed in 0.0.4; see CHANGELOG.md). The v0.0.2 slide
-// model survives as ONE built-in generator, SlideSfx — one plugin
-// among many, not the definition of SFX.
+// model survives as ONE built-in plugin, plugins::Slide<W> — one
+// plugin among many, not the definition of SFX.
 //
 // The generic render path is a template, not a virtual interface:
 // an SFX render call takes ONE sound, so compile-time polymorphism
@@ -48,7 +48,7 @@ void render_sfx(Generator&& gen, std::span<float> out) noexcept {
 }
 
 // Plain struct, designated initializers, no macros. The parameter
-// bundle for the SlideSfx model only — numbers, not a sound type.
+// bundle for the plugins::Slide model only — numbers, not a sound type.
 struct SfxParams {
   Wave wave;
   double f0_hz;          // start frequency
@@ -61,25 +61,6 @@ struct SfxParams {
 
 // Frame count for the params at the given sample rate.
 [[nodiscard]] std::size_t sfx_frames(const SfxParams& params, double sample_rate) noexcept;
-
-// SlideSfx: oscillator + linear frequency slide + AD envelope —
-// the v0.0.2 model, now ONE generator. Deterministic given params +
-// seed: noise consumes the passed Rng, never hidden state. Once the
-// effect's duration has elapsed, next() returns silence.
-class SlideSfx {
- public:
-  SlideSfx(SfxParams params, Rng rng, double sample_rate) noexcept;
-
-  float next() noexcept;
-
- private:
-  SfxParams params_;
-  Rng rng_;
-  double sample_rate_;
-  std::size_t total_ = 0; // frames in the effect
-  std::size_t index_ = 0; // frames produced so far
-  double phase_ = 0.0;
-};
 
 // Convenience overload: render the slide model into a caller-sized
 // span (size it with sfx_frames). Dispatches once on params.wave
