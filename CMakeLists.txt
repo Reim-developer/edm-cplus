@@ -72,6 +72,7 @@ if(EDM_BUILD_TESTS)
   edm_test(wav)
   edm_test(sfx)
   edm_test(pattern)
+  edm_test(voice)
 
   if(EDM_BUILD_EXAMPLES)
     # tone_renders runs the tone example; wav_validity checks its
