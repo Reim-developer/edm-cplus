@@ -8,11 +8,21 @@
 #include "edm/constants.hxx"
 
 namespace edm {
+namespace {
+// Filter clamp limits (documented in filter.hxx): the cutoff is
+// capped just below Nyquist, Q is kept in a sane band, and a
+// default-constructed Highpass starts at 1 kHz.
+constexpr double kMinCutoffHz = 1.0;
+constexpr double kMaxCutoffRatio = 0.45;  // fraction of the sample rate
+constexpr double kMinQ = 0.1;
+constexpr double kMaxQ = 100.0;
+constexpr double kDefaultHighpassCutoffHz = 1000.0;
+} // namespace
 
 void Biquad::set_lowpass(double cutoff_hz, double q, double sample_rate) noexcept {
   const double sr = sample_rate > 0.0 ? sample_rate : kDefaultSampleRate;
-  const double fc = std::clamp(cutoff_hz, 1.0, 0.45 * sr);
-  const double q_clamped = std::clamp(q, 0.1, 100.0);
+  const double fc = std::clamp(cutoff_hz, kMinCutoffHz, kMaxCutoffRatio * sr);
+  const double q_clamped = std::clamp(q, kMinQ, kMaxQ);
   const double w0 = 2.0 * kPi * fc / sr;
   const double alpha = std::sin(w0) / (2.0 * q_clamped);
   const double c = std::cos(w0);
@@ -49,11 +59,11 @@ void Biquad::process(std::span<const float> in, std::span<float> out) noexcept {
 
 void Highpass::set(double cutoff_hz, double sample_rate) noexcept {
   const double sr = sample_rate > 0.0 ? sample_rate : kDefaultSampleRate;
-  const double fc = std::clamp(cutoff_hz, 1.0, 0.45 * sr);
+  const double fc = std::clamp(cutoff_hz, kMinCutoffHz, kMaxCutoffRatio * sr);
   a_ = std::exp(-2.0 * kPi * fc / sr);
 }
 
-Highpass::Highpass() { set(1000.0, kDefaultSampleRate); }
+Highpass::Highpass() { set(kDefaultHighpassCutoffHz, kDefaultSampleRate); }
 
 void Highpass::reset() noexcept {
   y_ = 0.0;

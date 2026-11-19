@@ -10,12 +10,17 @@
 namespace edm {
 namespace {
 
+// Sanity cap so absurd tempos cannot overflow the integer.
+constexpr std::size_t kMaxFramesPerStep = 1000000000;
+
 // Frames per 16th-note step, rounded to the nearest sample.
-// Capped so absurd tempos cannot overflow the integer.
+// Step duration is (60 / bpm / 4) seconds: seconds-per-minute /
+// steps-per-beat — exactly 15.0, written as the ratio so the
+// time model reads, instead of a magic literal.
 std::size_t compute_frames_per_step(double bpm, double sample_rate) noexcept {
-  const double frames = 15.0 * sample_rate / bpm;
+  const double frames = (kSecondsPerMinute / kStepsPerBeat) * sample_rate / bpm;
   if (!(frames >= 1.0)) return 1;
-  if (frames > 1000000000.0) return 1000000000;
+  if (frames > static_cast<double>(kMaxFramesPerStep)) return kMaxFramesPerStep;
   return static_cast<std::size_t>(std::llround(frames));
 }
 

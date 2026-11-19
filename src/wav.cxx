@@ -10,8 +10,15 @@
 #include <cmath>
 #include <cstdint>
 #include <fstream>
+#include <limits>
 
 namespace edm {
+namespace {
+// WAV format constants. The two 16s are different values that
+// happen to be equal — keep them separate names.
+constexpr std::uint32_t kPcmFormatChunkSize = 16;  // fmt chunk payload
+constexpr std::uint16_t kBitsPerSample = 16;       // 16-bit samples
+} // namespace
 
 bool write_wav(const std::string& path, std::span<const float> samples, int sample_rate) {
   if (sample_rate <= 0) return false;
@@ -33,18 +40,19 @@ bool write_wav(const std::string& path, std::span<const float> samples, int samp
   ok = ok && put32(36 + data_bytes);
   ok = ok && put("WAVE", 4);
   ok = ok && put("fmt ", 4);
-  ok = ok && put32(16);      // PCM format chunk size
+  ok = ok && put32(kPcmFormatChunkSize);  // PCM format chunk size
   ok = ok && put16(1);       // PCM
   ok = ok && put16(1);       // mono
   ok = ok && put32(rate);    // sample rate
   ok = ok && put32(rate * 2); // byte rate
   ok = ok && put16(2);       // block align
-  ok = ok && put16(16);      // bits per sample
+  ok = ok && put16(kBitsPerSample);  // bits per sample
   ok = ok && put("data", 4);
   ok = ok && put32(data_bytes);
   for (float s : samples) {
     const float clamped = std::clamp(s, -1.0f, 1.0f);
-    const std::int16_t v = static_cast<std::int16_t>(std::lround(clamped * 32767.0f));
+    const std::int16_t v = static_cast<std::int16_t>(
+        std::lround(clamped * static_cast<float>(std::numeric_limits<std::int16_t>::max())));
     ok = ok && put16(static_cast<std::uint16_t>(v));
     if (!ok) break;
   }

@@ -35,6 +35,7 @@ struct SynthVoiceConfig {
   double sustain_level = 0.7;
   double release_seconds = 0.1;
   double filter_cutoff_hz = 0.0;  // 0 = bypass (no filter)
+  double filter_q = 0.7;          // resonance at the cutoff
   float volume = 0.5f;
 };
 
@@ -46,7 +47,7 @@ class SynthVoice : public Voice {
     envelope_.set_adsr(config.attack_seconds, config.decay_seconds, config.sustain_level,
                        config.release_seconds, sample_rate);
     if (config.filter_cutoff_hz > 0.0) {
-      filter_.set_lowpass(config.filter_cutoff_hz, 0.7, sample_rate);
+      filter_.set_lowpass(config.filter_cutoff_hz, config.filter_q, sample_rate);
     }
   }
 
