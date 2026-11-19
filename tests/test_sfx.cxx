@@ -1,7 +1,9 @@
-// SFX: the plugin API — SlideSfx through the generic render path
-// (frame counts, audibility, determinism, slide direction), a
-// user-defined generator written in this file (not from the
-// library), and randomize_sfx determinism + ranges.
+// SFX: the plugin API — plugins::Slide<W> through the generic
+// render path (frame counts, audibility, determinism, slide
+// direction), a CRTP plugin inheriting Plugin<Derived>, user-defined
+// generators written in this file (not from the library —
+// inheritance stays optional), and randomize_sfx determinism +
+// ranges.
 
 #include <cmath>
 #include <cstddef>
@@ -9,6 +11,7 @@
 #include <vector>
 
 #include "edm/buffer.hxx"
+#include "edm/plugins.hxx"
 #include "edm/rng.hxx"
 #include "edm/sfx.hxx"
 
@@ -58,11 +61,30 @@ edm::SfxParams explosion_params() {
                         .decay_seconds = 0.45};
 }
 
-// Render through the generic path: a SlideSfx pulled by render_sfx.
+// Render through the generic path: a plugins::Slide<W> pulled by
+// render_sfx. The switch is once per render, never per sample.
+template <edm::Wave W>
+void render_into(const edm::SfxParams& params, std::uint32_t seed, edm::Buffer& buffer) {
+  edm::plugins::Slide<W> gen(params, edm::Rng(seed), kSampleRate);
+  edm::render_sfx(gen, buffer.data());
+}
+
 edm::Buffer render(const edm::SfxParams& params, std::uint32_t seed) {
   edm::Buffer buffer(edm::sfx_frames(params, kSampleRate));
-  edm::SlideSfx gen(params, edm::Rng(seed), kSampleRate);
-  edm::render_sfx(gen, buffer.data());
+  switch (params.wave) {
+    case edm::Wave::Sine:
+      render_into<edm::Wave::Sine>(params, seed, buffer);
+      break;
+    case edm::Wave::Square:
+      render_into<edm::Wave::Square>(params, seed, buffer);
+      break;
+    case edm::Wave::Saw:
+      render_into<edm::Wave::Saw>(params, seed, buffer);
+      break;
+    case edm::Wave::Noise:
+      render_into<edm::Wave::Noise>(params, seed, buffer);
+      break;
+  }
   return buffer;
 }
 
@@ -92,9 +114,21 @@ bool same_params(const edm::SfxParams& a, const edm::SfxParams& b) {
          a.attack_seconds == b.attack_seconds && a.decay_seconds == b.decay_seconds;
 }
 
+// A CRTP plugin, defined HERE in user code: inherits
+// Plugin<ConstantPlugin> and implements next_impl() — the base
+// owns the frame counter, so silence after the duration and
+// finished() come for free.
+struct ConstantPlugin : public edm::plugins::Plugin<ConstantPlugin> {
+  float value;
+  ConstantPlugin(float v, double sample_rate, double seconds)
+      : edm::plugins::Plugin<ConstantPlugin>(sample_rate, seconds), value(v) {}
+  float next_impl() noexcept { return value; }
+};
+
 // USER-DEFINED generators: written in this test file, not from the
 // library. They prove render_sfx renders arbitrary user code
-// without knowing what it is.
+// without knowing what it is — and that inheriting the CRTP base
+// is optional, not required.
 struct ConstantGen {
   float value;
   float next() noexcept { return value; }
@@ -112,7 +146,8 @@ struct SineGen {
   }
 };
 
-static_assert(edm::SampleGenerator<edm::SlideSfx>);
+static_assert(edm::SampleGenerator<edm::plugins::Slide<edm::Wave::Saw>>);
+static_assert(edm::SampleGenerator<ConstantPlugin>);
 static_assert(edm::SampleGenerator<ConstantGen>);
 static_assert(edm::SampleGenerator<SineGen>);
 } // namespace
@@ -168,7 +203,7 @@ TEST(Sfx, LaserSlideFalls) {
 }
 
 // The params-based overload is the generic path in disguise:
-// bit-identical output to rendering a SlideSfx directly.
+// bit-identical output to rendering a Slide<W> directly.
 TEST(Sfx, ConvenienceOverloadMatchesGenericPath) {
   const edm::SfxParams params = explosion_params();
   const edm::Buffer via_generic = render(params, kSeed);
@@ -178,6 +213,44 @@ TEST(Sfx, ConvenienceOverloadMatchesGenericPath) {
   for (std::size_t i = 0; i < via_generic.size(); ++i) {
     EXPECT_EQ(via_generic[i], via_overload[i]);
   }
+}
+
+// When constructing Slide<W> directly, W wins and params.wave is
+// ignored: the same params with different waves render bit-identical
+// output through Slide<Wave::Sine>.
+TEST(Sfx, SlideTemplateWaveWins) {
+  const edm::SfxParams saw_params = laser_params(); // Wave::Saw
+  edm::SfxParams sine_params = laser_params();
+  sine_params.wave = edm::Wave::Sine;
+  edm::Buffer via_saw(edm::sfx_frames(saw_params, kSampleRate));
+  edm::plugins::Slide<edm::Wave::Sine> gen_a(saw_params, edm::Rng(kSeed), kSampleRate);
+  edm::render_sfx(gen_a, via_saw.data());
+  edm::Buffer via_sine(edm::sfx_frames(sine_params, kSampleRate));
+  edm::plugins::Slide<edm::Wave::Sine> gen_b(sine_params, edm::Rng(kSeed), kSampleRate);
+  edm::render_sfx(gen_b, via_sine.data());
+  ASSERT_EQ(via_saw.size(), via_sine.size());
+  for (std::size_t i = 0; i < via_saw.size(); ++i) {
+    EXPECT_EQ(via_saw[i], via_sine[i]);
+  }
+}
+
+// A CRTP plugin: the base owns the frame counter, so the plugin
+// only implements next_impl() — every sample is the constant for
+// exactly the duration, then silence, and finished() flips.
+TEST(Sfx, CrtpPlugin) {
+  edm::Buffer buffer(4410); // 0.1s at 44100 Hz
+  ConstantPlugin gen(0.25f, kSampleRate, 0.1);
+  EXPECT_FALSE(gen.finished());
+  EXPECT_EQ(gen.frames_elapsed(), 0);
+  EXPECT_EQ(gen.frames_total(), 4410);
+  edm::render_sfx(gen, buffer.data());
+  for (std::size_t i = 0; i < buffer.size(); ++i) {
+    EXPECT_EQ(buffer[i], 0.25f);
+  }
+  EXPECT_TRUE(gen.finished());
+  EXPECT_EQ(gen.frames_elapsed(), 4410);
+  // Past the duration, next() is silence without calling next_impl().
+  EXPECT_EQ(gen.next(), 0.0f);
 }
 
 // A generator written here, in user code: every sample is exactly
@@ -207,12 +280,12 @@ TEST(Sfx, UserDefinedSineGenerator) {
   }
 }
 
-// SlideSfx returns silence once the effect's duration has elapsed
+// Slide<W> returns silence once the effect's duration has elapsed
 // (a span longer than the effect is not stretched).
 TEST(Sfx, GeneratorSilenceAfterDuration) {
   const std::size_t frames = edm::sfx_frames(jump_params(), kSampleRate);
   edm::Buffer buffer(frames + 100);
-  edm::SlideSfx gen(jump_params(), edm::Rng(kSeed), kSampleRate);
+  edm::plugins::Slide<edm::Wave::Square> gen(jump_params(), edm::Rng(kSeed), kSampleRate);
   edm::render_sfx(gen, buffer.data());
   for (std::size_t i = frames; i < buffer.size(); ++i) {
     EXPECT_EQ(buffer[i], 0.0f);

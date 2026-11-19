@@ -82,9 +82,10 @@ class SlideSfx {
 };
 
 // Convenience overload: render the slide model into a caller-sized
-// span (size it with sfx_frames). Builds a SlideSfx and renders
-// through the generic path. Different arity from the template
-// overload, so no overload conflict.
+// span (size it with sfx_frames). Dispatches once on params.wave
+// to the matching plugins::Slide<W> and renders through the
+// generic path. Different arity from the template overload, so no
+// overload conflict.
 void render_sfx(SfxParams params, Rng rng, std::span<float> out,
                 double sample_rate) noexcept;
 

@@ -6,6 +6,8 @@
 #include <array>
 #include <cmath>
 
+#include "edm/plugins.hxx"
+
 namespace edm {
 namespace {
 
@@ -65,8 +67,31 @@ float SlideSfx::next() noexcept {
 
 void render_sfx(SfxParams params, Rng rng, std::span<float> out,
                 double sample_rate) noexcept {
-  SlideSfx gen(params, rng, sample_rate);
-  render_sfx(gen, out);
+  // One switch per call, never per sample: dispatch to the
+  // compile-time Slide<W> instantiation matching the runtime wave.
+  // (Same shape as the make_synth_voice factory.)
+  switch (params.wave) {
+    case Wave::Sine: {
+      plugins::Slide<Wave::Sine> gen(params, rng, sample_rate);
+      render_sfx(gen, out);
+      break;
+    }
+    case Wave::Square: {
+      plugins::Slide<Wave::Square> gen(params, rng, sample_rate);
+      render_sfx(gen, out);
+      break;
+    }
+    case Wave::Saw: {
+      plugins::Slide<Wave::Saw> gen(params, rng, sample_rate);
+      render_sfx(gen, out);
+      break;
+    }
+    case Wave::Noise: {
+      plugins::Slide<Wave::Noise> gen(params, rng, sample_rate);
+      render_sfx(gen, out);
+      break;
+    }
+  }
 }
 
 SfxParams randomize_sfx(Rng& rng) noexcept {
