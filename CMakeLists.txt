@@ -71,6 +71,7 @@ if(EDM_BUILD_TESTS)
   edm_test(sequencer)
   edm_test(buffer)
   edm_test(automation)
+  edm_test(section)
 
   if(EDM_BUILD_EXAMPLES)
     # tone_renders runs the tone example; wav_validity checks its
