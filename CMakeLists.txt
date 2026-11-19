@@ -16,6 +16,7 @@ target_sources(edm PRIVATE
   src/sfx.cxx
   src/pattern.cxx
   src/synth_voice.cxx
+  src/sequencer.cxx
 )
 target_include_directories(edm PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include)
 
@@ -74,6 +75,7 @@ if(EDM_BUILD_TESTS)
   edm_test(sfx)
   edm_test(pattern)
   edm_test(voice)
+  edm_test(sequencer)
 
   if(EDM_BUILD_EXAMPLES)
     # tone_renders runs the tone example; wav_validity checks its
