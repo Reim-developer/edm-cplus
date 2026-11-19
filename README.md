@@ -1,2 +1,42 @@
 # edm-cplus
+
 Create electronic dance music with C++ code.
+
+v0.0.1 is the base: the synth core everything else stands on. No
+front-ends yet — no SFX presets, no sequencer, no arrangement, no
+playback. Those come as later versions, built on this core.
+
+## v0.0.1 — the synth core
+
+- `edm::Rng` — deterministic xorshift32, seeded. Same seed, same stream.
+- `edm::Oscillator<Wave>` — template over `Sine`, `Square`, `Saw`,
+  `Noise`. Compile-time wave selection, no macros.
+- `edm::Envelope` — AD (one-shot) and ADSR (gated), per-sample.
+- `edm::Biquad` — RBJ lowpass, cutoff/Q settable per sample (sweeps).
+  `edm::Highpass` — one-pole.
+- `edm::Buffer` — owning PCM float buffer; views are `std::span<float>`.
+- `edm::write_wav` — 16-bit mono WAV writer.
+
+Rules the core follows: C++20, `.hxx` headers + `.cxx` sources,
+templates instead of macros, smart pointers / RAII (no raw `new` /
+`delete` anywhere), render functions take a destination span and never
+allocate, no exceptions in the DSP path, no global mutable state.
+
+## Build & test
+
+```sh
+cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
+cmake --build build
+ctest --test-dir build
+```
+
+Requires CMake 3.20+ and a C++20 compiler (gcc 13+ / clang 18+
+verified). The example renders a one-second tone:
+
+```sh
+./build/tone tone.wav
+```
+
+## License
+
+MIT. See [LICENSE](LICENSE).

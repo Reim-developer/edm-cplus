@@ -29,6 +29,12 @@ edm_warnings(edm)
 option(EDM_BUILD_TESTS "Build edm-cplus tests" ON)
 option(EDM_BUILD_EXAMPLES "Build edm-cplus examples" ON)
 
+if(EDM_BUILD_EXAMPLES)
+  add_executable(tone examples/tone.cxx)
+  target_link_libraries(tone PRIVATE edm)
+  edm_warnings(tone)
+endif()
+
 if(EDM_BUILD_TESTS)
   enable_testing()
   add_executable(test_rng tests/test_rng.cxx)
@@ -60,4 +66,13 @@ if(EDM_BUILD_TESTS)
   target_include_directories(test_wav PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/tests)
   edm_warnings(test_wav)
   add_test(NAME wav COMMAND test_wav)
+
+  # Test 6: the example's WAV opens in Python's wave module with the
+  # expected rate/channels/duration, and is non-silent.
+  find_package(Python3 COMPONENTS Interpreter QUIET)
+  if(Python3_FOUND AND EDM_BUILD_EXAMPLES)
+    add_test(NAME wav_validity
+      COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/tests/check_wav.py
+              $<TARGET_FILE:tone> ${CMAKE_CURRENT_BINARY_DIR}/tone.wav 44100 1.0)
+  endif()
 endif()
