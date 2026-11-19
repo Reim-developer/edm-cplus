@@ -1,5 +1,7 @@
 # edm-cplus
 
+[![CI](https://github.com/Reim-developer/edm-cplus/actions/workflows/ci.yml/badge.svg)](https://github.com/Reim-developer/edm-cplus/actions/workflows/ci.yml)
+
 Create electronic dance music with C++ code.
 
 v0.0.1 is the base: the synth core everything else stands on. No
