@@ -5,6 +5,10 @@ set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
+# Project CMake modules: warning flags, dependencies, test helpers.
+list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake")
+include(EdmWarnings)
+
 # The synth core. Non-trivial implementations live in src/*.cxx and are
 # added to the target as they land (see target_sources below);
 # templates and small value types live in include/edm/*.hxx.
@@ -20,14 +24,6 @@ target_sources(edm PRIVATE
   src/sequencer.cxx
 )
 target_include_directories(edm PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include)
-
-function(edm_warnings target)
-  if(MSVC)
-    target_compile_options(${target} PRIVATE /W4 /WX)
-  else()
-    target_compile_options(${target} PRIVATE -Wall -Wextra -Werror -pedantic)
-  endif()
-endfunction()
 
 edm_warnings(edm)
 
@@ -52,25 +48,10 @@ if(EDM_BUILD_TESTS)
   enable_testing()
 
   # GoogleTest via FetchContent (needs network at configure time).
-  include(FetchContent)
-  FetchContent_Declare(
-    googletest
-    URL https://github.com/google/googletest/archive/refs/tags/v1.17.0.zip
-    URL_HASH SHA256=40d4ec942217dcc84a9ebe2a68584ada7d4a33a8ee958755763278ea1c5e18ff
-    DOWNLOAD_EXTRACT_TIMESTAMP TRUE
-  )
-  FetchContent_MakeAvailable(googletest)
-  include(GoogleTest)
+  include(EdmDependencies)
+  edm_fetch_googletest()
 
-  # One gtest binary per suite; gtest_discover_tests registers each
-  # TEST() as its own CTest test. edm_warnings applies to our targets
-  # only — never to the gtest targets.
-  function(edm_test name)
-    add_executable(test_${name} tests/test_${name}.cxx)
-    target_link_libraries(test_${name} PRIVATE edm GTest::gtest_main)
-    edm_warnings(test_${name})
-    gtest_discover_tests(test_${name})
-  endfunction()
+  include(EdmTests)
 
   edm_test(rng)
   edm_test(filter)
