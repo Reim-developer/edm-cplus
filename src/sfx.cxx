@@ -36,27 +36,37 @@ std::size_t sfx_frames(const SfxParams& params, double sample_rate) noexcept {
   return static_cast<std::size_t>(params.seconds * sample_rate);
 }
 
-void render_sfx(const SfxParams& params, Rng& rng, std::span<float> out,
-                double sample_rate) noexcept {
-  if (out.empty() || sample_rate <= 0.0) return;
-  const std::size_t n = out.size();
-  double phase = 0.0;
-  for (std::size_t i = 0; i < n; ++i) {
-    const double t = static_cast<double>(i) / sample_rate;
-    const double frac = static_cast<double>(i) / static_cast<double>(n);
-    const double freq = params.f0_hz + (params.f1_hz - params.f0_hz) * frac;
-    phase += freq / sample_rate;
-    if (phase >= 1.0) phase -= 1.0;
-    double env = 1.0;
-    if (params.attack_seconds > 0.0 && t < params.attack_seconds) {
-      env = t / params.attack_seconds;
-    }
-    const double tail = params.seconds - t;
-    if (params.decay_seconds > 0.0 && tail < params.decay_seconds) {
-      env = std::min(env, tail / params.decay_seconds);
-    }
-    out[i] = static_cast<float>(wave_sample(params.wave, phase, rng) * params.volume * env);
+SlideSfx::SlideSfx(SfxParams params, Rng rng, double sample_rate) noexcept
+    : params_(params), rng_(rng), sample_rate_(sample_rate),
+      total_(sfx_frames(params, sample_rate)) {}
+
+float SlideSfx::next() noexcept {
+  // The v0.0.2 render loop, one sample at a time: the slide runs
+  // over the effect's own frame count (total_), so a span longer
+  // than the effect renders silence after the effect ends instead
+  // of stretching it.
+  if (index_ >= total_) return 0.0f;
+  const double t = static_cast<double>(index_) / sample_rate_;
+  const double frac = static_cast<double>(index_) / static_cast<double>(total_);
+  const double freq = params_.f0_hz + (params_.f1_hz - params_.f0_hz) * frac;
+  phase_ += freq / sample_rate_;
+  if (phase_ >= 1.0) phase_ -= 1.0;
+  double env = 1.0;
+  if (params_.attack_seconds > 0.0 && t < params_.attack_seconds) {
+    env = t / params_.attack_seconds;
   }
+  const double tail = params_.seconds - t;
+  if (params_.decay_seconds > 0.0 && tail < params_.decay_seconds) {
+    env = std::min(env, tail / params_.decay_seconds);
+  }
+  ++index_;
+  return static_cast<float>(wave_sample(params_.wave, phase_, rng_) * params_.volume * env);
+}
+
+void render_sfx(SfxParams params, Rng rng, std::span<float> out,
+                double sample_rate) noexcept {
+  SlideSfx gen(params, rng, sample_rate);
+  render_sfx(gen, out);
 }
 
 SfxParams randomize_sfx(Rng& rng) noexcept {
