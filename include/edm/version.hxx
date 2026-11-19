@@ -1,6 +1,6 @@
 #pragma once
 
-// edm-cplus version. v0.0.1: the synth core.
+// edm-cplus version. v0.0.2: SFX on the synth core.
 
 namespace edm {
 
@@ -10,7 +10,7 @@ struct Version {
   int patch;
 };
 
-inline constexpr Version kVersion{0, 0, 1};
-inline constexpr const char* kVersionString = "0.0.1";
+inline constexpr Version kVersion{0, 0, 2};
+inline constexpr const char* kVersionString = "0.0.2";
 
 } // namespace edm

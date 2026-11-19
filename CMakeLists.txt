@@ -1,5 +1,5 @@
-cmake_minimum_required(VERSION 3.20)
-project(edm-cplus VERSION 0.0.1 LANGUAGES CXX)
+cmake_minimum_required(VERSION 3.24)
+project(edm-cplus VERSION 0.0.2 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -37,42 +37,42 @@ endif()
 
 if(EDM_BUILD_TESTS)
   enable_testing()
-  add_executable(test_rng tests/test_rng.cxx)
-  target_link_libraries(test_rng PRIVATE edm)
-  target_include_directories(test_rng PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/tests)
-  edm_warnings(test_rng)
-  add_test(NAME rng COMMAND test_rng)
 
-  add_executable(test_filter tests/test_filter.cxx)
-  target_link_libraries(test_filter PRIVATE edm)
-  target_include_directories(test_filter PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/tests)
-  edm_warnings(test_filter)
-  add_test(NAME filter COMMAND test_filter)
+  # GoogleTest via FetchContent (needs network at configure time).
+  include(FetchContent)
+  FetchContent_Declare(
+    googletest
+    URL https://github.com/google/googletest/archive/refs/tags/v1.17.0.zip
+    URL_HASH SHA256=40d4ec942217dcc84a9ebe2a68584ada7d4a33a8ee958755763278ea1c5e18ff
+    DOWNLOAD_EXTRACT_TIMESTAMP TRUE
+  )
+  FetchContent_MakeAvailable(googletest)
+  include(GoogleTest)
 
-  add_executable(test_oscillator tests/test_oscillator.cxx)
-  target_link_libraries(test_oscillator PRIVATE edm)
-  target_include_directories(test_oscillator PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/tests)
-  edm_warnings(test_oscillator)
-  add_test(NAME oscillator COMMAND test_oscillator)
+  # One gtest binary per suite; gtest_discover_tests registers each
+  # TEST() as its own CTest test. edm_warnings applies to our targets
+  # only — never to the gtest targets.
+  function(edm_test name)
+    add_executable(test_${name} tests/test_${name}.cxx)
+    target_link_libraries(test_${name} PRIVATE edm GTest::gtest_main)
+    edm_warnings(test_${name})
+    gtest_discover_tests(test_${name})
+  endfunction()
 
-  add_executable(test_envelope tests/test_envelope.cxx)
-  target_link_libraries(test_envelope PRIVATE edm)
-  target_include_directories(test_envelope PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/tests)
-  edm_warnings(test_envelope)
-  add_test(NAME envelope COMMAND test_envelope)
+  edm_test(rng)
+  edm_test(filter)
+  edm_test(oscillator)
+  edm_test(envelope)
+  edm_test(wav)
 
-  add_executable(test_wav tests/test_wav.cxx)
-  target_link_libraries(test_wav PRIVATE edm)
-  target_include_directories(test_wav PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/tests)
-  edm_warnings(test_wav)
-  add_test(NAME wav COMMAND test_wav)
-
-  # Test 6: the example's WAV opens in Python's wave module with the
-  # expected rate/channels/duration, and is non-silent.
-  find_package(Python3 COMPONENTS Interpreter QUIET)
-  if(Python3_FOUND AND EDM_BUILD_EXAMPLES)
+  if(EDM_BUILD_EXAMPLES)
+    # tone_renders runs the tone example; wav_validity checks its
+    # output with the C++ validator (no Python anywhere).
+    add_test(NAME tone_renders COMMAND tone ${CMAKE_CURRENT_BINARY_DIR}/tone.wav)
+    add_executable(check_wav tests/check_wav.cxx)
+    edm_warnings(check_wav)
     add_test(NAME wav_validity
-      COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/tests/check_wav.py
-              $<TARGET_FILE:tone> ${CMAKE_CURRENT_BINARY_DIR}/tone.wav 44100 1.0)
+      COMMAND check_wav ${CMAKE_CURRENT_BINARY_DIR}/tone.wav 44100 1.0)
+    set_tests_properties(wav_validity PROPERTIES DEPENDS tone_renders)
   endif()
 endif()
