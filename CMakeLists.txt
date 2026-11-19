@@ -15,6 +15,7 @@ target_sources(edm PRIVATE
   src/wav.cxx
   src/sfx.cxx
   src/pattern.cxx
+  src/synth_voice.cxx
 )
 target_include_directories(edm PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include)
 
