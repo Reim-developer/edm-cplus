@@ -28,7 +28,7 @@ namespace edm {
 
 struct SupersawVoiceConfig {
   double attack_seconds = 0.005;
-  double decay_seconds = 0.25;
+  double decay_seconds = 0.16;
   float volume = 1.15f;  // the spike's lead volume
 };
 

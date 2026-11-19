@@ -26,11 +26,12 @@
 namespace edm {
 
 struct NoiseVoiceConfig {
-  double highpass_cutoff_hz = 7000.0;  // hats: 7000; clap: 1500; snare: 1800
-  double decay_seconds = 0.05;         // hats: 0.05; clap: 0.09; snare: 0.12
-  double seconds = 0.10;               // hats: 0.10; clap: 0.20; snare: 0.15
+  double highpass_cutoff_hz = 6000.0;  // hats: 6000; clap: 1000; snare: 1800
+  double decay_seconds = 0.018;        // hats: 0.018; clap: 0.09; snare: 0.03
+  double seconds = 0.045;              // hats: 0.045; clap: 0.22; snare: 0.06
   int bursts = 1;                      // clap: 3; hats/snare: 1
-  float volume = 0.5f;                 // hats: 0.5; clap: 0.6; snare: 1.0
+  double burst_spacing_seconds = 0.012;  // clap burst spacing (spike's)
+  float volume = 0.14f;  // hats: 0.14; clap: 0.45; snare: 1.0 (ramped by pattern)
   int seed = kDefaultSeed;
 };
 

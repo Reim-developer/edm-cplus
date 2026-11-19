@@ -12,8 +12,9 @@ namespace {
 // exponential target this fast, so coefficient changes are smooth
 // (no zipper) even though set_lowpass runs every sample.
 constexpr double kRiserCutoffSmoothing = 0.0002;
-// Butterworth Q for the riser lowpass — neutral, no resonance peak.
-constexpr double kRiserFilterQ = 0.707;
+// Q for the riser lowpass — the spike's value (a slight resonance
+// peak makes the sweep audible as it rises).
+constexpr double kRiserFilterQ = 1.2;
 
 } // namespace
 
@@ -22,7 +23,7 @@ RiserVoice::RiserVoice(RiserVoiceConfig config, double sample_rate) noexcept
       sample_rate_(sample_rate > 0.0 ? sample_rate : kDefaultSampleRate),
       rng_(static_cast<std::uint32_t>(config.seed)),
       rng_initial_(static_cast<std::uint32_t>(config.seed)),
-      current_cutoff_hz_(config.f0_hz) {
+      current_cutoff_hz_(config.cutoff_from_hz) {
   total_ = (config.seconds > 0.0)
                ? static_cast<std::size_t>(config.seconds * sample_rate_)
                : 0;
@@ -30,7 +31,7 @@ RiserVoice::RiserVoice(RiserVoiceConfig config, double sample_rate) noexcept
 
 void RiserVoice::note_on(int /*midi*/, float velocity) noexcept {
   lowpass_.reset();
-  current_cutoff_hz_ = config_.f0_hz;
+  current_cutoff_hz_ = config_.cutoff_from_hz;
   index_ = 0;
   velocity_ = velocity;
   active_ = true;
@@ -43,11 +44,12 @@ void RiserVoice::note_off(int /*midi*/) noexcept {
 float RiserVoice::next() noexcept {
   if (!active_ || index_ >= total_) return 0.0f;
   const double frac = total_ > 0 ? static_cast<double>(index_) / total_ : 0.0;
-  // Exponential sweep f0 -> f1. Non-positive endpoints fall back to
-  // a fixed f1 (set_lowpass clamps, so nothing can go NaN).
-  double target = config_.f1_hz;
-  if (config_.f0_hz > 0.0 && config_.f1_hz > 0.0) {
-    target = config_.f0_hz * std::pow(config_.f1_hz / config_.f0_hz, frac);
+  // Exponential sweep from -> to. Non-positive endpoints fall back
+  // to a fixed `to` (set_lowpass clamps, so nothing can go NaN).
+  double target = config_.cutoff_to_hz;
+  if (config_.cutoff_from_hz > 0.0 && config_.cutoff_to_hz > 0.0) {
+    target = config_.cutoff_from_hz *
+             std::pow(config_.cutoff_to_hz / config_.cutoff_from_hz, frac);
   }
   current_cutoff_hz_ += (target - current_cutoff_hz_) * kRiserCutoffSmoothing;
   lowpass_.set_lowpass(current_cutoff_hz_, kRiserFilterQ, sample_rate_);
@@ -61,7 +63,7 @@ float RiserVoice::next() noexcept {
 void RiserVoice::reset() noexcept {
   rng_ = rng_initial_;
   lowpass_.reset();
-  current_cutoff_hz_ = config_.f0_hz;
+  current_cutoff_hz_ = config_.cutoff_from_hz;
   index_ = 0;
   velocity_ = 0.0f;
   active_ = false;

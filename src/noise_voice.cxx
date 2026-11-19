@@ -8,9 +8,9 @@
 namespace edm {
 namespace {
 
-// The clap texture: burst spacing and the gate window, from the
-// spike's clap (3 bursts, 12 ms apart, inside the first 40 ms).
-constexpr double kNoiseBurstSpacingSeconds = 0.012;
+// The clap texture: the burst gate window, from the spike's clap
+// (3 bursts, 12 ms apart, inside the first 40 ms). The spacing
+// itself is a config field (burst_spacing_seconds).
 constexpr double kNoiseBurstWindowSeconds = 0.04;
 constexpr double kNoiseOddBurstGate = 0.25;
 
@@ -45,10 +45,12 @@ float NoiseVoice::next() noexcept {
                          ? std::exp(-t / config_.decay_seconds)
                          : 1.0;
   // Burst gate (clap texture): alternate full/quarter volume while
-  // inside the burst window. bursts == 1 disables it.
+  // inside the burst window. bursts == 1 (or a non-positive
+  // spacing) disables it.
   double gate = 1.0;
-  if (config_.bursts > 1 && t < kNoiseBurstWindowSeconds) {
-    const int burst = static_cast<int>(t / kNoiseBurstSpacingSeconds);
+  if (config_.bursts > 1 && config_.burst_spacing_seconds > 0.0 &&
+      t < kNoiseBurstWindowSeconds) {
+    const int burst = static_cast<int>(t / config_.burst_spacing_seconds);
     gate = (burst % 2 == 0) ? 1.0 : kNoiseOddBurstGate;
   }
   ++index_;

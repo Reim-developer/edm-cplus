@@ -203,7 +203,7 @@ TEST(SupersawVoice, NoteOffCutsHard) {
   }
 }
 
-// The envelope ends at attack + 6*decay (1.505 s with the default
+// The envelope ends at attack + 6*decay (0.965 s with the default
 // config): silence well past the end, sound before it.
 TEST(SupersawVoice, SilenceAfterEnvelope) {
   edm::SupersawVoice voice(edm::SupersawVoiceConfig{}, kSampleRate);
@@ -212,10 +212,10 @@ TEST(SupersawVoice, SilenceAfterEnvelope) {
   render(voice, buffer);
   // Still sounding well before the end (the envelope is exp decay,
   // so the last 100 ms before the gate are near-silent by design).
-  EXPECT_GT(window_peak(buffer, static_cast<std::size_t>(1.0 * kSampleRate),
-                        static_cast<std::size_t>(1.2 * kSampleRate)),
+  EXPECT_GT(window_peak(buffer, static_cast<std::size_t>(0.6 * kSampleRate),
+                        static_cast<std::size_t>(0.8 * kSampleRate)),
             0.001f);
-  for (std::size_t i = static_cast<std::size_t>(1.6 * kSampleRate); i < buffer.size(); ++i) {
+  for (std::size_t i = static_cast<std::size_t>(1.0 * kSampleRate); i < buffer.size(); ++i) {
     EXPECT_FLOAT_EQ(buffer[i], 0.0f) << "sample " << i;
   }
 }
@@ -224,36 +224,37 @@ TEST(SupersawVoice, SilenceAfterEnvelope) {
 
 edm::NoiseVoiceConfig hat_config() {
   edm::NoiseVoiceConfig config;
-  config.highpass_cutoff_hz = 7000.0;
-  config.decay_seconds = 0.05;
-  config.seconds = 0.10;
+  config.highpass_cutoff_hz = 6000.0;
+  config.decay_seconds = 0.018;
+  config.seconds = 0.045;
   config.bursts = 1;
-  config.volume = 0.5f;
+  config.volume = 0.14f;
   return config;
 }
 
 edm::NoiseVoiceConfig clap_config() {
   edm::NoiseVoiceConfig config;
-  config.highpass_cutoff_hz = 1500.0;
+  config.highpass_cutoff_hz = 1000.0;
   config.decay_seconds = 0.09;
-  config.seconds = 0.20;
+  config.seconds = 0.22;
   config.bursts = 3;
-  config.volume = 0.6f;
+  config.burst_spacing_seconds = 0.012;
+  config.volume = 0.45f;
   return config;
 }
 
-// A hat decays: the RMS in the first 20 ms is far above the RMS
-// in the last 40 ms (exp decay, tau 0.05 s).
+// A hat decays fast: the RMS in the first 10 ms is far above the
+// RMS in the last 15 ms (exp decay, tau 0.018 s).
 TEST(NoiseVoice, HatDecays) {
   edm::NoiseVoice hat(hat_config(), kSampleRate);
   hat.note_on(42, 1.0f);
-  edm::Buffer buffer(static_cast<std::size_t>(0.1 * kSampleRate));
+  edm::Buffer buffer(static_cast<std::size_t>(0.045 * kSampleRate));
   render(hat, buffer);
   const float early =
-      window_rms(buffer, 0, static_cast<std::size_t>(0.02 * kSampleRate));
-  const float late = window_rms(buffer, static_cast<std::size_t>(0.06 * kSampleRate),
+      window_rms(buffer, 0, static_cast<std::size_t>(0.01 * kSampleRate));
+  const float late = window_rms(buffer, static_cast<std::size_t>(0.03 * kSampleRate),
                                 buffer.size());
-  EXPECT_GT(early, 0.05f);
+  EXPECT_GT(early, 0.02f);
   EXPECT_GT(early, late * 3.0f);
 }
 
@@ -280,8 +281,8 @@ TEST(NoiseVoice, SilenceAfterDuration) {
   hat.note_on(42, 1.0f);
   edm::Buffer buffer(static_cast<std::size_t>(0.3 * kSampleRate));
   render(hat, buffer);
-  EXPECT_GT(window_peak(buffer, 0, static_cast<std::size_t>(0.1 * kSampleRate)), 0.05f);
-  for (std::size_t i = static_cast<std::size_t>(0.1 * kSampleRate); i < buffer.size(); ++i) {
+  EXPECT_GT(window_peak(buffer, 0, static_cast<std::size_t>(0.045 * kSampleRate)), 0.02f);
+  for (std::size_t i = static_cast<std::size_t>(0.045 * kSampleRate); i < buffer.size(); ++i) {
     EXPECT_FLOAT_EQ(buffer[i], 0.0f) << "sample " << i;
   }
 }
@@ -292,7 +293,7 @@ TEST(NoiseVoice, Deterministic) {
   edm::NoiseVoice b(clap_config(), kSampleRate);
   a.note_on(39, 1.0f);
   b.note_on(39, 1.0f);
-  edm::Buffer buffer_a(static_cast<std::size_t>(0.2 * kSampleRate));
+  edm::Buffer buffer_a(static_cast<std::size_t>(0.22 * kSampleRate));
   edm::Buffer buffer_b(buffer_a.size());
   render(a, buffer_a);
   render(b, buffer_b);
@@ -306,7 +307,7 @@ TEST(NoiseVoice, Deterministic) {
 TEST(NoiseVoice, ResetRewindsRng) {
   edm::NoiseVoice voice(hat_config(), kSampleRate);
   voice.note_on(42, 1.0f);
-  edm::Buffer first(static_cast<std::size_t>(0.1 * kSampleRate));
+  edm::Buffer first(static_cast<std::size_t>(0.045 * kSampleRate));
   render(voice, first);
   voice.reset();
   voice.note_on(42, 1.0f);
@@ -322,9 +323,9 @@ TEST(NoiseVoice, ResetRewindsRng) {
 TEST(NoiseVoice, NoteOffIsNoOp) {
   edm::NoiseVoice a(hat_config(), kSampleRate);
   a.note_on(42, 1.0f);
-  edm::Buffer buffer_a(static_cast<std::size_t>(0.1 * kSampleRate));
+  edm::Buffer buffer_a(static_cast<std::size_t>(0.045 * kSampleRate));
   for (std::size_t i = 0; i < buffer_a.size(); ++i) {
-    if (i == static_cast<std::size_t>(0.05 * kSampleRate)) a.note_off(42);
+    if (i == static_cast<std::size_t>(0.02 * kSampleRate)) a.note_off(42);
     buffer_a[i] = a.next();
   }
 
@@ -343,10 +344,10 @@ TEST(NoiseVoice, NoteOffIsNoOp) {
 
 edm::RiserVoiceConfig riser_config() {
   edm::RiserVoiceConfig config;
-  config.f0_hz = 400.0;
-  config.f1_hz = 8000.0;
+  config.cutoff_from_hz = 400.0;
+  config.cutoff_to_hz = 8000.0;
   config.seconds = 3.75;  // 2 bars at 128 BPM
-  config.volume = 0.5f;
+  config.volume = 0.30f;
   return config;
 }
 

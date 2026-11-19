@@ -1,7 +1,8 @@
 #pragma once
 
 // RiserVoice: the build-up riser — white noise through a lowpass
-// whose cutoff sweeps exponentially from f0 to f1 over the note's
+// whose cutoff sweeps exponentially from cutoff_from_hz to
+// cutoff_to_hz over the note's
 // duration, with the gain rising linearly (volume * frac) alongside.
 // The caller computes `seconds` (2 bars at 128 BPM = 3.75 s) and
 // places one long note at the end of a build.
@@ -21,10 +22,10 @@
 namespace edm {
 
 struct RiserVoiceConfig {
-  double f0_hz = 400.0;   // cutoff at the start
-  double f1_hz = 8000.0;  // cutoff at the end
-  double seconds = 3.75;  // 2 bars at 128 BPM — caller-computed
-  float volume = 0.5f;
+  double cutoff_from_hz = 400.0;  // cutoff at the start
+  double cutoff_to_hz = 8000.0;   // cutoff at the end
+  double seconds = 3.75;          // 2 bars at 128 BPM — caller-computed
+  float volume = 0.30f;           // the spike's riser volume
   int seed = kDefaultSeed;
 };
 

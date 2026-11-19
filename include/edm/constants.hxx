@@ -58,4 +58,8 @@ inline constexpr std::array<double, kSupersawVoices> kSupersawDetuneCents = {
     -12.0, -8.0, -4.0, 0.0, 4.0, 8.0, 12.0};
 inline constexpr double kSupersawGain = 0.35;
 
+// The master peak the demo normalizes to (the spike's master
+// chain: tanh soft clip, then normalize to 0.89).
+inline constexpr float kMixNormalizePeak = 0.89f;
+
 } // namespace edm
