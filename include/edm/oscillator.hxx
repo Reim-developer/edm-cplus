@@ -16,6 +16,7 @@
 #include <cstddef>
 #include <span>
 
+#include "edm/constants.hxx"
 #include "edm/rng.hxx"
 
 namespace edm {
@@ -57,15 +58,14 @@ class Oscillator {
   }
 
  private:
-  static constexpr double kPi = 3.14159265358979323846;
-
   float sample() noexcept {
     if constexpr (W == Wave::Sine) {
       const float v = static_cast<float>(std::sin(2.0 * kPi * phase_));
       advance();
       return v;
     } else if constexpr (W == Wave::Square) {
-      const float v = phase_ < 0.5 ? 0.8f : -0.8f;
+      const float v =
+          phase_ < 0.5 ? static_cast<float>(kSquareWaveAmplitude) : -static_cast<float>(kSquareWaveAmplitude);
       advance();
       return v;
     } else if constexpr (W == Wave::Saw) {
@@ -96,7 +96,7 @@ class Oscillator {
   double phase_ = 0.0;
   double increment_ = 0.0;
   double frequency_ = 0.0;
-  double sample_rate_ = 44100.0;
+  double sample_rate_ = kDefaultSampleRate;
 };
 
 } // namespace edm

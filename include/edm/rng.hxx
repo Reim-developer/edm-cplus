@@ -26,7 +26,7 @@ class Rng {
   }
 
   // Uniform double in [0, 1).
-  double uniform() noexcept { return static_cast<double>(next() >> 8) * (1.0 / 16777216.0); }
+  double uniform() noexcept { return static_cast<double>(next() >> 8) * kUniformScale; }
 
   // Uniform float in [0, 1).
   float uniform_f() noexcept { return static_cast<float>(uniform()); }
@@ -35,6 +35,11 @@ class Rng {
   float bipolar() noexcept { return uniform_f() * 2.0f - 1.0f; }
 
  private:
+  // Scale for uniform(): next() >> 8 keeps the top 24 bits, so there
+  // are 2^24 = 16777216 possible values — multiply by 1/2^24 to land
+  // in [0, 1).
+  static constexpr double kUniformScale = 1.0 / 16777216.0;
+
   std::uint32_t state_;
 };
 

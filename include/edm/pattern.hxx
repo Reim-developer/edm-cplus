@@ -15,12 +15,14 @@
 #include <optional>
 #include <vector>
 
+#include "edm/constants.hxx"
+
 namespace edm {
 
 struct Step {
   std::optional<int> note;  // MIDI number; nullopt = rest
-  float velocity = 0.8f;    // 0..1
-  int length_steps = 1;     // gate length in steps (>= 1)
+  float velocity = kDefaultVelocity;  // 0..1
+  int length_steps = 1;               // gate length in steps (>= 1)
 };
 
 class Pattern {
@@ -30,7 +32,7 @@ class Pattern {
 
   // Set a note on a step. Out-of-range steps are ignored.
   // length_steps is clamped to >= 1 (a gate of 0 steps is no note).
-  void set(int step, int midi, float velocity = 0.8f, int length_steps = 1) noexcept;
+  void set(int step, int midi, float velocity = kDefaultVelocity, int length_steps = 1) noexcept;
 
   // Clear a step back to a rest. Out-of-range steps are ignored.
   void clear(int step) noexcept;

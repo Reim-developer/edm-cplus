@@ -19,6 +19,7 @@
 #include <memory>
 #include <optional>
 
+#include "edm/constants.hxx"
 #include "edm/envelope.hxx"
 #include "edm/filter.hxx"
 #include "edm/oscillator.hxx"
@@ -40,7 +41,7 @@ struct SynthVoiceConfig {
 template <Wave W>
 class SynthVoice : public Voice {
  public:
-  SynthVoice(SynthVoiceConfig config, double sample_rate, Rng rng = Rng(1234)) noexcept
+  SynthVoice(SynthVoiceConfig config, double sample_rate, Rng rng = Rng(kDefaultSeed)) noexcept
       : config_(config), sample_rate_(sample_rate), rng_(rng) {
     envelope_.set_adsr(config.attack_seconds, config.decay_seconds, config.sustain_level,
                        config.release_seconds, sample_rate);
@@ -95,6 +96,6 @@ class SynthVoice : public Voice {
 // The switch happens once, at construction — never per sample.
 [[nodiscard]] std::unique_ptr<Voice> make_synth_voice(const SynthVoiceConfig& config,
                                                       double sample_rate,
-                                                      Rng rng = Rng(1234));
+                                                      Rng rng = Rng(kDefaultSeed));
 
 } // namespace edm

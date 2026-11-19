@@ -31,6 +31,7 @@
 #include <concepts>
 #include <cstddef>
 
+#include "edm/constants.hxx"
 #include "edm/oscillator.hxx"
 #include "edm/rng.hxx"
 #include "edm/sfx.hxx"
@@ -118,7 +119,7 @@ class Slide : public Plugin<Slide<W>> {
     if constexpr (W == Wave::Sine) {
       sample = std::sin(2.0 * kPi * phase_);
     } else if constexpr (W == Wave::Square) {
-      sample = phase_ < 0.5 ? 0.8 : -0.8;
+      sample = phase_ < 0.5 ? kSquareWaveAmplitude : -kSquareWaveAmplitude;
     } else if constexpr (W == Wave::Saw) {
       sample = 2.0 * phase_ - 1.0;
     } else {  // Wave::Noise
@@ -128,8 +129,6 @@ class Slide : public Plugin<Slide<W>> {
   }
 
  private:
-  static constexpr double kPi = 3.14159265358979323846;
-
   SfxParams params_;
   Rng rng_;
   double phase_ = 0.0;

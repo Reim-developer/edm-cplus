@@ -5,13 +5,12 @@
 #include <algorithm>
 #include <cmath>
 
+#include "edm/constants.hxx"
+
 namespace edm {
-namespace {
-constexpr double kPi = 3.14159265358979323846;
-} // namespace
 
 void Biquad::set_lowpass(double cutoff_hz, double q, double sample_rate) noexcept {
-  const double sr = sample_rate > 0.0 ? sample_rate : 44100.0;
+  const double sr = sample_rate > 0.0 ? sample_rate : kDefaultSampleRate;
   const double fc = std::clamp(cutoff_hz, 1.0, 0.45 * sr);
   const double q_clamped = std::clamp(q, 0.1, 100.0);
   const double w0 = 2.0 * kPi * fc / sr;
@@ -49,12 +48,12 @@ void Biquad::process(std::span<const float> in, std::span<float> out) noexcept {
 }
 
 void Highpass::set(double cutoff_hz, double sample_rate) noexcept {
-  const double sr = sample_rate > 0.0 ? sample_rate : 44100.0;
+  const double sr = sample_rate > 0.0 ? sample_rate : kDefaultSampleRate;
   const double fc = std::clamp(cutoff_hz, 1.0, 0.45 * sr);
   a_ = std::exp(-2.0 * kPi * fc / sr);
 }
 
-Highpass::Highpass() { set(1000.0, 44100.0); }
+Highpass::Highpass() { set(1000.0, kDefaultSampleRate); }
 
 void Highpass::reset() noexcept {
   y_ = 0.0;

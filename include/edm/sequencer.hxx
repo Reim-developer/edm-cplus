@@ -31,6 +31,7 @@
 #include <span>
 #include <vector>
 
+#include "edm/constants.hxx"
 #include "edm/pattern.hxx"
 #include "edm/voice.hxx"
 
@@ -57,7 +58,7 @@ class Sequencer {
 
   // Buffer-sizing helpers (integer frames; see the time model).
   [[nodiscard]] std::size_t frames_per_step() const noexcept { return frames_per_step_; }
-  [[nodiscard]] std::size_t frames_per_bar() const noexcept { return frames_per_step_ * 16; }
+  [[nodiscard]] std::size_t frames_per_bar() const noexcept { return frames_per_step_ * kStepsPerBar; }
   [[nodiscard]] std::size_t frames_for_bars(int bars) const noexcept {
     return frames_per_bar() * static_cast<std::size_t>(bars > 0 ? bars : 0);
   }

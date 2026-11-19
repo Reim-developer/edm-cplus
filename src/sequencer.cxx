@@ -5,6 +5,8 @@
 #include <cmath>
 #include <utility>
 
+#include "edm/constants.hxx"
+
 namespace edm {
 namespace {
 
@@ -20,8 +22,8 @@ std::size_t compute_frames_per_step(double bpm, double sample_rate) noexcept {
 } // namespace
 
 Sequencer::Sequencer(double bpm, double sample_rate) {
-  const double safe_bpm = bpm > 0.0 ? bpm : 120.0;
-  const double safe_rate = sample_rate > 0.0 ? sample_rate : 44100.0;
+  const double safe_bpm = bpm > 0.0 ? bpm : kDefaultBpm;
+  const double safe_rate = sample_rate > 0.0 ? sample_rate : kDefaultSampleRate;
   frames_per_step_ = compute_frames_per_step(safe_bpm, safe_rate);
 }
 
