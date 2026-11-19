@@ -7,15 +7,24 @@
 // library (foreshadowed in the v0.0.1 design).
 //
 // midi_to_freq is the note-to-frequency conversion: A4 (MIDI 69)
-// = 440 Hz, each semitone multiplies by the 12th root of 2.
+// = 440 Hz, each semitone multiplies by the 12th root of 2. The
+// reference pitch is a template parameter, so alternate concert
+// pitch (432 Hz, 415 Hz baroque) is one template argument away;
+// the default keeps every existing call working unchanged.
 
 #include <cmath>
 
+#include "edm/constants.hxx"
+
 namespace edm {
 
-// MIDI note number -> frequency in Hz.
-[[nodiscard]] inline double midi_to_freq(int midi) noexcept {
-  return 440.0 * std::pow(2.0, (static_cast<double>(midi) - 69.0) / 12.0);
+// MIDI note number -> frequency in Hz, against a reference pitch
+// for A4. Floating-point NTTP is C++20. Not constexpr: std::pow
+// is not constexpr on the supported toolchains.
+template <double ReferenceHz = kA4Frequency>
+[[nodiscard]] double midi_to_freq(int midi) noexcept {
+  return ReferenceHz *
+         std::pow(2.0, (static_cast<double>(midi) - kA4MidiNote) / kSemitonesPerOctave);
 }
 
 class Voice {

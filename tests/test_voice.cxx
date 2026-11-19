@@ -63,6 +63,10 @@ TEST(Voice, MidiToFreq) {
   EXPECT_DOUBLE_EQ(edm::midi_to_freq(57), 220.0);
   EXPECT_NEAR(edm::midi_to_freq(60), 261.6255653005986, 0.001);
   EXPECT_NEAR(edm::midi_to_freq(0), 8.175798915643707, 0.001);
+  // Alternate concert pitch: the template parameter is the A4 reference.
+  EXPECT_DOUBLE_EQ(edm::midi_to_freq<432.0>(69), 432.0);
+  EXPECT_DOUBLE_EQ(edm::midi_to_freq<432.0>(81), 864.0);
+  EXPECT_NEAR(edm::midi_to_freq<432.0>(60), 256.86873684058776, 0.001);
 }
 
 // A sine voice on A4 renders at 440 Hz (within 5%).
@@ -157,6 +161,35 @@ TEST(SynthVoice, FilterCutsHarmonics) {
 
   EXPECT_GT(rms(dry_buffer), 0.1f);
   EXPECT_LT(rms(wet_buffer), rms(dry_buffer) * 0.5f);
+}
+
+// filter_q is wired, not decorative: the same filtered note renders
+// differently at q 0.7 and q 5.0 (the resonance changes every
+// filter coefficient, so the samples differ from the first one).
+TEST(SynthVoice, FilterQChangesOutput) {
+  edm::SynthVoiceConfig low_q = plain_config();
+  low_q.filter_cutoff_hz = 500.0;
+  low_q.filter_q = 0.7;
+  edm::SynthVoice<edm::Wave::Saw> voice_low(low_q, kSampleRate);
+  voice_low.note_on(81, 1.0f);
+  edm::Buffer buffer_low(4410);
+  render(voice_low, buffer_low);
+
+  edm::SynthVoiceConfig high_q = plain_config();
+  high_q.filter_cutoff_hz = 500.0;
+  high_q.filter_q = 5.0;
+  edm::SynthVoice<edm::Wave::Saw> voice_high(high_q, kSampleRate);
+  voice_high.note_on(81, 1.0f);
+  edm::Buffer buffer_high(4410);
+  render(voice_high, buffer_high);
+
+  EXPECT_GT(peak(buffer_low), 0.0f);
+  EXPECT_GT(peak(buffer_high), 0.0f);
+  std::size_t differing = 0;
+  for (std::size_t i = 0; i < buffer_low.size(); ++i) {
+    if (buffer_low[i] != buffer_high[i]) ++differing;
+  }
+  EXPECT_GT(differing, 0u);
 }
 
 // The factory builds the wave the config names: a sine voice peaks
