@@ -32,6 +32,7 @@ bass.set(12, 45, 0.8f, 2);
 edm::SynthVoiceConfig config;
 config.wave = edm::Wave::Saw;
 config.filter_cutoff_hz = 800.0;
+config.filter_q = 0.7;  // resonance (default 0.7)
 seq.add_track(edm::make_synth_voice(config, 44100), std::move(bass));
 
 edm::Buffer out(seq.frames_for_bars(2));
@@ -154,6 +155,8 @@ resource-limited targets).
   `edm::Voice` / `edm::SynthVoice` (note interface + oscillator
   voice), `edm::Sequencer`: notes scheduled at a BPM,
   sample-accurate step boundaries, gate-aware note on/off.
+  `edm::midi_to_freq<Hz>` converts MIDI notes (default A4 = 440 Hz;
+  `midi_to_freq<432.0>` for alternate concert pitch).
 
 Rules the library follows: C++20, `.hxx` headers + `.cxx` sources,
 templates instead of macros, smart pointers / RAII (no raw `new` /

@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.24)
-project(edm-cplus VERSION 0.0.5 LANGUAGES CXX)
+project(edm-cplus VERSION 0.0.6 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -24,6 +24,12 @@ target_sources(edm PRIVATE
   src/sequencer.cxx
 )
 target_include_directories(edm PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include)
+
+# The version header is generated from version.hxx.in: the version
+# lives in exactly one place, project(... VERSION ...) above.
+configure_file(include/edm/version.hxx.in
+  ${CMAKE_CURRENT_BINARY_DIR}/include/edm/version.hxx @ONLY)
+target_include_directories(edm PUBLIC ${CMAKE_CURRENT_BINARY_DIR}/include)
 
 edm_warnings(edm)
 

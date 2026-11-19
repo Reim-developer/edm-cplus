@@ -5,6 +5,37 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.0.6] - 2026-11-19
+
+### Added
+
+- `edm::midi_to_freq<ReferenceHz>` — the A4 reference pitch is now
+  a template parameter (default 440 Hz), so alternate concert pitch
+  (432 Hz, 415 Hz baroque) is one template argument away. Existing
+  calls work unchanged.
+- `SynthVoiceConfig::filter_q` (default 0.7) — the filter resonance
+  is now a config field instead of a literal buried in the
+  constructor.
+- `edm::constants.hxx` — the single source for the library's shared
+  numbers (default sample rate / BPM, A4 reference, pi, step
+  counts, default seed / velocity).
+
+### Changed
+
+- CMake split: the root `CMakeLists.txt` now reads top-down as what
+  the project is; the functions live in `cmake/EdmWarnings.cmake`,
+  `cmake/EdmDependencies.cmake`, and `cmake/EdmTests.cmake`.
+- The googletest SHA256 is a named variable (`EDM_GOOGLETEST_SHA256`)
+  next to the version in `cmake/EdmDependencies.cmake`, and the
+  download URL is built from the version. The hash itself stays —
+  it is the tamper check on the downloaded archive.
+- Magic numbers abstracted: duplicated and chosen values now live in
+  `edm::constants.hxx` or as file-local named constants; definitional
+  math (0.0/1.0 levels, the saw formula, 2*pi) stays inline.
+- The version is single-sourced: `version.hxx` is generated from
+  `version.hxx.in` by CMake, so the version bump touches only
+  `project(... VERSION ...)` in `CMakeLists.txt`.
+
 ## [0.0.5] - 2026-11-19
 
 ### Added
