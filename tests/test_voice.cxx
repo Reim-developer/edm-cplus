@@ -192,6 +192,64 @@ TEST(SynthVoice, FilterQChangesOutput) {
   EXPECT_GT(differing, 0u);
 }
 
+// set_filter_cutoff moves the cutoff at render time: a bypassed
+// voice with the cutoff set to 500 Hz renders bit-identically to a
+// voice built with cutoff 500 — and both are far quieter than dry
+// (the 880 Hz saw's energy sits above the cutoff).
+TEST(SynthVoice, SetFilterCutoff) {
+  edm::SynthVoiceConfig built_config = plain_config();
+  built_config.filter_cutoff_hz = 500.0;
+  edm::SynthVoice<edm::Wave::Saw> built(built_config, kSampleRate);
+  built.note_on(81, 1.0f);
+  edm::Buffer built_buffer(4410);
+  render(built, built_buffer);
+
+  edm::SynthVoice<edm::Wave::Saw> set(plain_config(), kSampleRate);
+  set.note_on(81, 1.0f);
+  set.set_filter_cutoff(500.0);
+  edm::Buffer set_buffer(4410);
+  render(set, set_buffer);
+
+  for (std::size_t i = 0; i < built_buffer.size(); ++i) {
+    EXPECT_FLOAT_EQ(built_buffer[i], set_buffer[i]) << "sample " << i;
+  }
+
+  edm::SynthVoice<edm::Wave::Saw> dry(plain_config(), kSampleRate);
+  dry.note_on(81, 1.0f);
+  edm::Buffer dry_buffer(4410);
+  render(dry, dry_buffer);
+  EXPECT_GT(rms(dry_buffer), 0.1f);
+  EXPECT_LT(rms(set_buffer), rms(dry_buffer) * 0.5f);
+}
+
+// set_filter_cutoff(0) re-bypasses: a voice set to 500 Hz and back
+// to 0 before any sample renders bit-identically to a dry voice.
+TEST(SynthVoice, SetFilterCutoffZeroBypasses) {
+  edm::SynthVoice<edm::Wave::Saw> voice(plain_config(), kSampleRate);
+  voice.note_on(81, 1.0f);
+  voice.set_filter_cutoff(500.0);
+  voice.set_filter_cutoff(0.0);
+  edm::Buffer buffer(4410);
+  render(voice, buffer);
+
+  edm::SynthVoice<edm::Wave::Saw> dry(plain_config(), kSampleRate);
+  dry.note_on(81, 1.0f);
+  edm::Buffer dry_buffer(4410);
+  render(dry, dry_buffer);
+  for (std::size_t i = 0; i < buffer.size(); ++i) {
+    EXPECT_FLOAT_EQ(buffer[i], dry_buffer[i]) << "sample " << i;
+  }
+}
+
+// A SynthVoice is a FilterableVoice through the Voice interface —
+// the cast the Section's cutoff binding relies on.
+TEST(SynthVoice, IsFilterableVoice) {
+  const std::unique_ptr<edm::Voice> voice =
+      edm::make_synth_voice(plain_config(), kSampleRate);
+  ASSERT_NE(voice, nullptr);
+  EXPECT_NE(dynamic_cast<edm::FilterableVoice*>(voice.get()), nullptr);
+}
+
 // The factory builds the wave the config names: a sine voice peaks
 // at the volume, a square voice at 0.8x the volume.
 TEST(SynthVoice, FactorySelectsWave) {

@@ -40,7 +40,7 @@ struct SynthVoiceConfig {
 };
 
 template <Wave W>
-class SynthVoice : public Voice {
+class SynthVoice : public FilterableVoice {
  public:
   SynthVoice(SynthVoiceConfig config, double sample_rate, Rng rng = Rng(kDefaultSeed)) noexcept
       : config_(config), sample_rate_(sample_rate), rng_(rng), rng_initial_(rng) {
@@ -84,6 +84,17 @@ class SynthVoice : public Voice {
     rng_ = rng_initial_;
     velocity_ = 0.0f;
     active_midi_.reset();
+  }
+
+  // Move the lowpass cutoff (Hz); <= 0 bypasses. Enabling a
+  // bypassed filter recomputes the coefficients from the current
+  // state — the filter state itself is untouched, so a sweep
+  // moves smoothly instead of clicking.
+  void set_filter_cutoff(double hz) noexcept override {
+    config_.filter_cutoff_hz = hz;
+    if (hz > 0.0) {
+      filter_.set_lowpass(hz, config_.filter_q, sample_rate_);
+    }
   }
 
  private:

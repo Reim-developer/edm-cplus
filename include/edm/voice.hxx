@@ -42,4 +42,18 @@ class Voice {
   virtual void reset() noexcept = 0;
 };
 
+// A voice with a settable lowpass filter. The Section's filter-cutoff
+// automation binds to this interface — one dynamic_cast at bind time
+// — not to a concrete voice type: SynthVoice is a template, so there
+// is no single SynthVoice type to cast to, and a future filtered
+// voice should bind without touching the Section.
+class FilterableVoice : public Voice {
+ public:
+  // Move the lowpass cutoff (Hz). A cutoff <= 0 bypasses the filter.
+  // If the voice was built bypassed, a positive cutoff ENABLES the
+  // filter — a bound automation must do something; silently ignoring
+  // it would be a trap.
+  virtual void set_filter_cutoff(double hz) noexcept = 0;
+};
+
 } // namespace edm
