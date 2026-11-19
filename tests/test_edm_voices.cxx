@@ -11,6 +11,7 @@
 #include "edm/kick_voice.hxx"
 #include "edm/noise_voice.hxx"
 #include "edm/oscillator.hxx"
+#include "edm/riser_voice.hxx"
 #include "edm/supersaw_voice.hxx"
 #include "edm/voice.hxx"
 
@@ -100,6 +101,7 @@ TEST(KickVoice, NoteOffIsNoOp) {
     EXPECT_FLOAT_EQ(buffer_a[i], buffer_b[i]) << "sample " << i;
   }
 }
+
 
 // A retrigger restarts the pitch drop and the phase: the samples
 // after a retrigger are bit-identical to a fresh note.
@@ -328,6 +330,111 @@ TEST(NoiseVoice, NoteOffIsNoOp) {
 
   edm::NoiseVoice b(hat_config(), kSampleRate);
   b.note_on(42, 1.0f);
+  edm::Buffer buffer_b(buffer_a.size());
+  render(b, buffer_b);
+
+  for (std::size_t i = 0; i < buffer_a.size(); ++i) {
+    EXPECT_FLOAT_EQ(buffer_a[i], buffer_b[i]) << "sample " << i;
+  }
+}
+
+
+// --- RiserVoice ---
+
+edm::RiserVoiceConfig riser_config() {
+  edm::RiserVoiceConfig config;
+  config.f0_hz = 400.0;
+  config.f1_hz = 8000.0;
+  config.seconds = 3.75;  // 2 bars at 128 BPM
+  config.volume = 0.5f;
+  return config;
+}
+
+// The riser gets louder as it rises: RMS in the last quarter far
+// above RMS in the first quarter (gain ramp + filter opening).
+TEST(RiserVoice, RmsRises) {
+  edm::RiserVoice riser(riser_config(), kSampleRate);
+  riser.note_on(60, 1.0f);
+  edm::Buffer buffer(static_cast<std::size_t>(3.75 * kSampleRate));
+  render(riser, buffer);
+  const std::size_t quarter = buffer.size() / 4;
+  const float first = window_rms(buffer, 0, quarter);
+  const float last = window_rms(buffer, 3 * quarter, buffer.size());
+  EXPECT_GT(last, 0.05f);
+  EXPECT_GT(last, first * 2.0f);
+}
+
+// The filter opens as it rises: the zero-crossing rate in the last
+// quarter is well above the rate in the first quarter.
+TEST(RiserVoice, ZcrRises) {
+  edm::RiserVoice riser(riser_config(), kSampleRate);
+  riser.note_on(60, 1.0f);
+  edm::Buffer buffer(static_cast<std::size_t>(3.75 * kSampleRate));
+  render(riser, buffer);
+  const std::size_t quarter = buffer.size() / 4;
+  const double first = window_zcr_freq(buffer, 0, quarter);
+  const double last = window_zcr_freq(buffer, 3 * quarter, buffer.size());
+  EXPECT_GT(last, first * 1.5);
+}
+
+// Silence after the configured duration — exactly.
+TEST(RiserVoice, SilenceAfterDuration) {
+  edm::RiserVoice riser(riser_config(), kSampleRate);
+  riser.note_on(60, 1.0f);
+  edm::Buffer buffer(static_cast<std::size_t>(4.5 * kSampleRate));
+  render(riser, buffer);
+  EXPECT_GT(window_peak(buffer, static_cast<std::size_t>(3.5 * kSampleRate),
+                        static_cast<std::size_t>(3.75 * kSampleRate)),
+            0.05f);
+  for (std::size_t i = static_cast<std::size_t>(3.75 * kSampleRate); i < buffer.size(); ++i) {
+    EXPECT_FLOAT_EQ(buffer[i], 0.0f) << "sample " << i;
+  }
+}
+
+// Two voices with the same seed render bit-identically.
+TEST(RiserVoice, Deterministic) {
+  edm::RiserVoice a(riser_config(), kSampleRate);
+  edm::RiserVoice b(riser_config(), kSampleRate);
+  a.note_on(60, 1.0f);
+  b.note_on(60, 1.0f);
+  edm::Buffer buffer_a(static_cast<std::size_t>(3.75 * kSampleRate));
+  edm::Buffer buffer_b(buffer_a.size());
+  render(a, buffer_a);
+  render(b, buffer_b);
+  for (std::size_t i = 0; i < buffer_a.size(); ++i) {
+    EXPECT_FLOAT_EQ(buffer_a[i], buffer_b[i]) << "sample " << i;
+  }
+}
+
+// reset() rewinds the Rng: a riser after reset() renders
+// bit-identically to the first riser.
+TEST(RiserVoice, ResetRewindsRng) {
+  edm::RiserVoice voice(riser_config(), kSampleRate);
+  voice.note_on(60, 1.0f);
+  edm::Buffer first(static_cast<std::size_t>(3.75 * kSampleRate));
+  render(voice, first);
+  voice.reset();
+  voice.note_on(60, 1.0f);
+  edm::Buffer second(first.size());
+  render(voice, second);
+  for (std::size_t i = 0; i < first.size(); ++i) {
+    EXPECT_FLOAT_EQ(first[i], second[i]) << "sample " << i;
+  }
+}
+
+// note_off is a no-op: a riser with a note_off mid-sweep renders
+// bit-identically to one without it.
+TEST(RiserVoice, NoteOffIsNoOp) {
+  edm::RiserVoice a(riser_config(), kSampleRate);
+  a.note_on(60, 1.0f);
+  edm::Buffer buffer_a(static_cast<std::size_t>(3.75 * kSampleRate));
+  for (std::size_t i = 0; i < buffer_a.size(); ++i) {
+    if (i == static_cast<std::size_t>(2.0 * kSampleRate)) a.note_off(60);
+    buffer_a[i] = a.next();
+  }
+
+  edm::RiserVoice b(riser_config(), kSampleRate);
+  b.note_on(60, 1.0f);
   edm::Buffer buffer_b(buffer_a.size());
   render(b, buffer_b);
 
