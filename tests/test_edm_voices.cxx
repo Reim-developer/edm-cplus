@@ -9,6 +9,7 @@
 #include "edm/buffer.hxx"
 #include "edm/constants.hxx"
 #include "edm/kick_voice.hxx"
+#include "edm/noise_voice.hxx"
 #include "edm/oscillator.hxx"
 #include "edm/supersaw_voice.hxx"
 #include "edm/voice.hxx"
@@ -214,5 +215,123 @@ TEST(SupersawVoice, SilenceAfterEnvelope) {
             0.001f);
   for (std::size_t i = static_cast<std::size_t>(1.6 * kSampleRate); i < buffer.size(); ++i) {
     EXPECT_FLOAT_EQ(buffer[i], 0.0f) << "sample " << i;
+  }
+}
+
+// --- NoiseVoice ---
+
+edm::NoiseVoiceConfig hat_config() {
+  edm::NoiseVoiceConfig config;
+  config.highpass_cutoff_hz = 7000.0;
+  config.decay_seconds = 0.05;
+  config.seconds = 0.10;
+  config.bursts = 1;
+  config.volume = 0.5f;
+  return config;
+}
+
+edm::NoiseVoiceConfig clap_config() {
+  edm::NoiseVoiceConfig config;
+  config.highpass_cutoff_hz = 1500.0;
+  config.decay_seconds = 0.09;
+  config.seconds = 0.20;
+  config.bursts = 3;
+  config.volume = 0.6f;
+  return config;
+}
+
+// A hat decays: the RMS in the first 20 ms is far above the RMS
+// in the last 40 ms (exp decay, tau 0.05 s).
+TEST(NoiseVoice, HatDecays) {
+  edm::NoiseVoice hat(hat_config(), kSampleRate);
+  hat.note_on(42, 1.0f);
+  edm::Buffer buffer(static_cast<std::size_t>(0.1 * kSampleRate));
+  render(hat, buffer);
+  const float early =
+      window_rms(buffer, 0, static_cast<std::size_t>(0.02 * kSampleRate));
+  const float late = window_rms(buffer, static_cast<std::size_t>(0.06 * kSampleRate),
+                                buffer.size());
+  EXPECT_GT(early, 0.05f);
+  EXPECT_GT(early, late * 3.0f);
+}
+
+// The clap texture: full volume in [0, 12 ms) and [24, 36 ms),
+// quarter volume in [12, 24 ms) — RMS alternates by ~4x.
+TEST(NoiseVoice, ClapBursts) {
+  edm::NoiseVoice clap(clap_config(), kSampleRate);
+  clap.note_on(39, 1.0f);
+  edm::Buffer buffer(static_cast<std::size_t>(0.2 * kSampleRate));
+  render(clap, buffer);
+  const float b0 =
+      window_rms(buffer, 0, static_cast<std::size_t>(0.012 * kSampleRate));
+  const float b1 = window_rms(buffer, static_cast<std::size_t>(0.012 * kSampleRate),
+                              static_cast<std::size_t>(0.024 * kSampleRate));
+  const float b2 = window_rms(buffer, static_cast<std::size_t>(0.024 * kSampleRate),
+                              static_cast<std::size_t>(0.036 * kSampleRate));
+  EXPECT_GT(b0, b1 * 2.0f);
+  EXPECT_GT(b2, b1 * 2.0f);
+}
+
+// Silence after the configured duration — exactly.
+TEST(NoiseVoice, SilenceAfterDuration) {
+  edm::NoiseVoice hat(hat_config(), kSampleRate);
+  hat.note_on(42, 1.0f);
+  edm::Buffer buffer(static_cast<std::size_t>(0.3 * kSampleRate));
+  render(hat, buffer);
+  EXPECT_GT(window_peak(buffer, 0, static_cast<std::size_t>(0.1 * kSampleRate)), 0.05f);
+  for (std::size_t i = static_cast<std::size_t>(0.1 * kSampleRate); i < buffer.size(); ++i) {
+    EXPECT_FLOAT_EQ(buffer[i], 0.0f) << "sample " << i;
+  }
+}
+
+// Two voices with the same seed render bit-identically.
+TEST(NoiseVoice, Deterministic) {
+  edm::NoiseVoice a(clap_config(), kSampleRate);
+  edm::NoiseVoice b(clap_config(), kSampleRate);
+  a.note_on(39, 1.0f);
+  b.note_on(39, 1.0f);
+  edm::Buffer buffer_a(static_cast<std::size_t>(0.2 * kSampleRate));
+  edm::Buffer buffer_b(buffer_a.size());
+  render(a, buffer_a);
+  render(b, buffer_b);
+  for (std::size_t i = 0; i < buffer_a.size(); ++i) {
+    EXPECT_FLOAT_EQ(buffer_a[i], buffer_b[i]) << "sample " << i;
+  }
+}
+
+// reset() rewinds the Rng: a note after reset() renders
+// bit-identically to the first note.
+TEST(NoiseVoice, ResetRewindsRng) {
+  edm::NoiseVoice voice(hat_config(), kSampleRate);
+  voice.note_on(42, 1.0f);
+  edm::Buffer first(static_cast<std::size_t>(0.1 * kSampleRate));
+  render(voice, first);
+  voice.reset();
+  voice.note_on(42, 1.0f);
+  edm::Buffer second(first.size());
+  render(voice, second);
+  for (std::size_t i = 0; i < first.size(); ++i) {
+    EXPECT_FLOAT_EQ(first[i], second[i]) << "sample " << i;
+  }
+}
+
+// note_off is a no-op: a hat with a note_off mid-decay renders
+// bit-identically to one without it.
+TEST(NoiseVoice, NoteOffIsNoOp) {
+  edm::NoiseVoice a(hat_config(), kSampleRate);
+  a.note_on(42, 1.0f);
+  edm::Buffer buffer_a(static_cast<std::size_t>(0.1 * kSampleRate));
+  for (std::size_t i = 0; i < buffer_a.size(); ++i) {
+    if (i == static_cast<std::size_t>(0.05 * kSampleRate)) a.note_off(42);
+    buffer_a[i] = a.next();
+  }
+
+  edm::NoiseVoice b(hat_config(), kSampleRate);
+  b.note_on(42, 1.0f);
+  edm::Buffer buffer_b(buffer_a.size());
+  render(b, buffer_b);
+
+  for (std::size_t i = 0; i < buffer_a.size(); ++i) {
+    EXPECT_FLOAT_EQ(buffer_a[i], buffer_b[i]) << "sample " << i;
   }
 }
