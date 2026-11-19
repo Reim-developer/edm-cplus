@@ -89,6 +89,25 @@ class Section {
   bool bind_filter_cutoff(std::size_t track, Automation curve);
   bool bind_track_volume(std::size_t track, Automation curve);
 
+  // Sidechain: duck the music bus on every kick — the pump. The
+  // section renders twice (kick-only bus, then music-only bus,
+  // each from a reset sequencer) and mixes kick + ducked music.
+  // The gain curve comes from the kick PATTERN's note-on times:
+  // gain = 1 - depth * exp(-t/release) after each kick.
+  //
+  // Deliberate difference from the spike: the ducking is UNIFORM
+  // across the whole music bus. The spike ducks the lead less than
+  // the bass; the library has one bus and one curve — simpler, and
+  // per-track depth belongs to a future version if anyone asks.
+  //
+  // depth is clamped to [0, 1], release to >= 1 ms. A kick track
+  // with no notes (or a bad index) means no ducking — the mix is
+  // still correct. The kick times are snapshotted here: the
+  // section owns its sequencer, so no pattern can change after
+  // this call, and render stays allocation-free.
+  void enable_sidechain(std::size_t kick_track, double depth = 0.7,
+                        double release_seconds = 0.1);
+
   [[nodiscard]] const std::string& name() const noexcept { return name_; }
   [[nodiscard]] int bars() const noexcept { return bars_; }
   [[nodiscard]] std::size_t frames() const noexcept {
@@ -105,11 +124,31 @@ class Section {
     Automation curve;
   };
 
+  // The blocked render loop (automations per block). Resets the
+  // sequencer first; does NOT touch mutes (the sidechain path sets
+  // them before calling this).
+  void render_blocked(std::span<float> out);
+  // The two-pass sidechain render: kick bus, music bus, then mix.
+  void render_with_sidechain(std::span<float> out);
+  // Kick note-on times in frames, from the kick pattern (loops
+  // over the section when the pattern is shorter than it).
+  [[nodiscard]] std::vector<std::size_t> kick_times(std::size_t kick_track) const;
+
   std::string name_;
   int bars_;
   Sequencer sequencer_;
   std::vector<CutoffBinding> cutoff_bindings_;
   std::vector<VolumeBinding> volume_bindings_;
+  // Sidechain state. The buses are sized on the first sidechain
+  // render and reused after that; the kick times are snapshotted
+  // by enable_sidechain. Sections without sidechain carry neither.
+  bool sidechain_enabled_ = false;
+  std::size_t sidechain_kick_track_ = 0;
+  double sidechain_depth_ = 0.7;
+  double sidechain_release_seconds_ = 0.1;
+  std::vector<std::size_t> kick_times_;
+  std::vector<float> kick_bus_;
+  std::vector<float> music_bus_;
 };
 
 } // namespace edm

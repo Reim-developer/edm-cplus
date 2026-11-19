@@ -9,6 +9,7 @@
 #include <vector>
 
 #include "edm/buffer.hxx"
+#include "edm/kick_voice.hxx"
 #include "edm/pattern.hxx"
 #include "edm/section.hxx"
 #include "edm/sequencer.hxx"
@@ -255,4 +256,187 @@ TEST(Section, RebindReplacesCurve) {
   // Full volume throughout: the first half is as loud as the second
   // (within the attack transient's small effect).
   EXPECT_GT(window_rms(buffer, 0, half), window_rms(buffer, half, buffer.size()) * 0.9f);
+}
+
+// --- Sidechain ---
+
+// A 1-bar section: kick 4-on-the-floor (steps 0/4/8/12) + a
+// sustained sine bass (whole-bar note). Returns the section with
+// the kick on track 0 and the bass on track 1.
+edm::Section kick_and_bass_section(bool sidechain) {
+  edm::Sequencer seq(kBpm, kSampleRate);
+  edm::Pattern kick_pattern(16);
+  for (int step = 0; step < 16; step += 4) kick_pattern.set(step, 36, 1.0f);
+  seq.add_track(std::make_unique<edm::KickVoice>(edm::KickVoiceConfig{}, kSampleRate),
+                std::move(kick_pattern));
+  edm::Pattern bass_pattern(16);
+  bass_pattern.set(0, 45, 1.0f, 16);  // whole-bar note
+  add_note_track(seq, std::move(bass_pattern));
+  edm::Section section("drop", 1, std::move(seq));
+  if (sidechain) section.enable_sidechain(0);
+  return section;
+}
+
+// The kick bus is unaffected by the sidechain machinery: a section
+// with a kick + a silent music track, sidechain on, renders
+// bit-identically to a kick-only section.
+TEST(Section, SidechainKickUnaffected) {
+  edm::Sequencer seq(kBpm, kSampleRate);
+  edm::Pattern kick_pattern(16);
+  for (int step = 0; step < 16; step += 4) kick_pattern.set(step, 36, 1.0f);
+  seq.add_track(std::make_unique<edm::KickVoice>(edm::KickVoiceConfig{}, kSampleRate),
+                std::move(kick_pattern));
+  edm::Pattern empty_pattern(16);  // all rests — silent music bus
+  add_note_track(seq, std::move(empty_pattern));
+  edm::Section with_sidechain("drop", 1, std::move(seq));
+  with_sidechain.enable_sidechain(0);
+
+  edm::Sequencer kick_only_seq(kBpm, kSampleRate);
+  edm::Pattern kick_pattern2(16);
+  for (int step = 0; step < 16; step += 4) kick_pattern2.set(step, 36, 1.0f);
+  kick_only_seq.add_track(
+      std::make_unique<edm::KickVoice>(edm::KickVoiceConfig{}, kSampleRate),
+      std::move(kick_pattern2));
+  edm::Section kick_only("kick", 1, std::move(kick_only_seq));
+
+  edm::Buffer a(with_sidechain.frames());
+  with_sidechain.render(a.data());
+  edm::Buffer b(kick_only.frames());
+  kick_only.render(b.data());
+  EXPECT_GT(window_peak(a, 0, a.size()), 0.1f);
+  for (std::size_t i = 0; i < a.size(); ++i) {
+    EXPECT_FLOAT_EQ(a[i], b[i]) << "sample " << i;
+  }
+}
+
+// The pump: the music RMS in the 50 ms after a kick is under 60%
+// of the unducked music in the same window (~0.48 expected from
+// the 0.7 depth / 0.1 s release), and back above 85% once the
+// ducking has recovered. The ducked music is recovered from the
+// mix by subtracting the kick-only render (mix = kick + ducked
+// music, so mix - kick isolates the ducked music).
+TEST(Section, SidechainDucksMusic) {
+  edm::Section section = kick_and_bass_section(true);
+  edm::Buffer mix(section.frames());
+  section.render(mix.data());
+
+  edm::Sequencer kick_seq(kBpm, kSampleRate);
+  edm::Pattern kick_pattern(16);
+  for (int step = 0; step < 16; step += 4) kick_pattern.set(step, 36, 1.0f);
+  kick_seq.add_track(std::make_unique<edm::KickVoice>(edm::KickVoiceConfig{}, kSampleRate),
+                     std::move(kick_pattern));
+  edm::Section kick_only("kick", 1, std::move(kick_seq));
+  edm::Buffer kick(kick_only.frames());
+  kick_only.render(kick.data());
+
+  edm::Sequencer music_seq(kBpm, kSampleRate);
+  edm::Pattern bass_pattern(16);
+  bass_pattern.set(0, 45, 1.0f, 16);
+  add_note_track(music_seq, std::move(bass_pattern));
+  edm::Section music_only("bass", 1, std::move(music_seq));
+  edm::Buffer music(music_only.frames());
+  music_only.render(music.data());
+
+  // Second kick (step 4, 0.469 s) — clear of the bass attack.
+  const std::size_t kick2 = 4 * kStepFrames;
+  const std::size_t ducked_from = kick2 + static_cast<std::size_t>(0.01 * kSampleRate);
+  const std::size_t ducked_to = kick2 + static_cast<std::size_t>(0.06 * kSampleRate);
+  const std::size_t recovered_from = kick2 + static_cast<std::size_t>(0.20 * kSampleRate);
+  const std::size_t recovered_to = kick2 + static_cast<std::size_t>(0.25 * kSampleRate);
+
+  auto ducked_music_rms = [&](std::size_t from, std::size_t to) {
+    double sum = 0.0;
+    for (std::size_t i = from; i < to; ++i) {
+      const double d = static_cast<double>(mix[i] - kick[i]);
+      sum += d * d;
+    }
+    return static_cast<float>(std::sqrt(sum / static_cast<double>(to - from)));
+  };
+
+  EXPECT_GT(window_rms(music, ducked_from, ducked_to), 0.1f);
+  EXPECT_LT(ducked_music_rms(ducked_from, ducked_to),
+            window_rms(music, ducked_from, ducked_to) * 0.6f);
+  EXPECT_GT(ducked_music_rms(recovered_from, recovered_to),
+            window_rms(music, recovered_from, recovered_to) * 0.85f);
+}
+
+// Mix == kick + ducked music, sample by sample: the expected mix
+// is computed independently here from a kick-only render, a
+// music-only render, and the gain curve from the kick times.
+TEST(Section, SidechainMixEqualsKickPlusDuckedMusic) {
+  edm::Section section = kick_and_bass_section(true);
+  edm::Buffer mix(section.frames());
+  section.render(mix.data());
+
+  // Kick-only render.
+  edm::Sequencer kick_seq(kBpm, kSampleRate);
+  edm::Pattern kick_pattern(16);
+  for (int step = 0; step < 16; step += 4) kick_pattern.set(step, 36, 1.0f);
+  kick_seq.add_track(std::make_unique<edm::KickVoice>(edm::KickVoiceConfig{}, kSampleRate),
+                     std::move(kick_pattern));
+  edm::Section kick_only("kick", 1, std::move(kick_seq));
+  edm::Buffer kick(kick_only.frames());
+  kick_only.render(kick.data());
+
+  // Music-only render.
+  edm::Sequencer music_seq(kBpm, kSampleRate);
+  edm::Pattern bass_pattern(16);
+  bass_pattern.set(0, 45, 1.0f, 16);
+  add_note_track(music_seq, std::move(bass_pattern));
+  edm::Section music_only("bass", 1, std::move(music_seq));
+  edm::Buffer music(music_only.frames());
+  music_only.render(music.data());
+
+  // Kick times (frames): steps 0/4/8/12.
+  const std::size_t kick_times[4] = {0, 4 * kStepFrames, 8 * kStepFrames, 12 * kStepFrames};
+  for (std::size_t i = 0; i < mix.size(); ++i) {
+    std::size_t last_kick = 0;
+    for (std::size_t k = 0; k < 4; ++k) {
+      if (kick_times[k] <= i) last_kick = kick_times[k];
+    }
+    const double t = static_cast<double>(i - last_kick) / kSampleRate;
+    const double gain = 1.0 - 0.7 * std::exp(-t / 0.1);
+    const float expected = kick[i] + music[i] * static_cast<float>(gain);
+    EXPECT_NEAR(mix[i], expected, 1e-6f) << "sample " << i;
+  }
+}
+
+// No kicks means no ducking: a kick track with an empty pattern
+// renders bit-identically with sidechain on or off.
+TEST(Section, SidechainNoKicksMeansNoDucking) {
+  auto build = [](bool sidechain) {
+    edm::Sequencer seq(kBpm, kSampleRate);
+    edm::Pattern empty_kick(16);  // no notes
+    seq.add_track(std::make_unique<edm::KickVoice>(edm::KickVoiceConfig{}, kSampleRate),
+                  std::move(empty_kick));
+    edm::Pattern bass_pattern(16);
+    bass_pattern.set(0, 45, 1.0f, 16);
+    add_note_track(seq, std::move(bass_pattern));
+    edm::Section section("drop", 1, std::move(seq));
+    if (sidechain) section.enable_sidechain(0);
+    return section;
+  };
+  edm::Section with = build(true);
+  edm::Section without = build(false);
+  edm::Buffer a(with.frames());
+  with.render(a.data());
+  edm::Buffer b(without.frames());
+  without.render(b.data());
+  EXPECT_GT(window_peak(a, 0, a.size()), 0.1f);
+  for (std::size_t i = 0; i < a.size(); ++i) {
+    EXPECT_FLOAT_EQ(a[i], b[i]) << "sample " << i;
+  }
+}
+
+// A sidechain render is deterministic: rendering twice reproduces
+// bit-identically (buses reused, sequencer reset each pass).
+TEST(Section, SidechainDeterminism) {
+  edm::Section section = kick_and_bass_section(true);
+  edm::Buffer first(section.frames());
+  section.render(first.data());
+  edm::Buffer second(section.frames());
+  section.render(second.data());
+  for (std::size_t i = 0; i < first.size(); ++i) {
+    EXPECT_FLOAT_EQ(first[i], second[i]) << "sample " << i;
+  }
 }

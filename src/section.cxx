@@ -79,11 +79,91 @@ bool Section::bind_track_volume(std::size_t track, Automation curve) {
   return true;
 }
 
+void Section::enable_sidechain(std::size_t kick_track, double depth,
+                               double release_seconds) {
+  sidechain_enabled_ = true;
+  sidechain_kick_track_ = kick_track;
+  sidechain_depth_ = std::clamp(depth, 0.0, 1.0);
+  sidechain_release_seconds_ =
+      release_seconds > 0.001 ? release_seconds : 0.001;
+  kick_times_ = kick_times(kick_track);  // snapshot; patterns can't change now
+}
+
+std::vector<std::size_t> Section::kick_times(std::size_t kick_track) const {
+  const Pattern& pattern = sequencer_.track_pattern(kick_track);
+  const int length = pattern.size();
+  if (length <= 0) return {};
+  const std::size_t frames_per_step = sequencer_.frames_per_step();
+  const std::size_t total = frames();
+  const std::size_t section_steps =
+      static_cast<std::size_t>(bars_) * static_cast<std::size_t>(kStepsPerBar);
+  std::vector<std::size_t> times;
+  // The pattern loops over the section: a 16-step kick pattern in a
+  // 4-bar section fires its notes 4 times.
+  for (std::size_t base = 0; base < section_steps; base += static_cast<std::size_t>(length)) {
+    for (int step = 0; step < length; ++step) {
+      if (pattern.at(step).note.has_value()) {
+        const std::size_t time = (base + static_cast<std::size_t>(step)) * frames_per_step;
+        if (time < total) times.push_back(time);
+      }
+    }
+  }
+  return times;  // already sorted (base, then step, both ascending)
+}
+
 void Section::render(std::span<float> out) {
-  sequencer_.reset();  // every render starts from the section start
   for (std::size_t i = 0; i < sequencer_.track_count(); ++i) {
     sequencer_.set_track_muted(i, false);  // a plain render hears all tracks
   }
+  if (sidechain_enabled_) {
+    render_with_sidechain(out);
+    return;
+  }
+  render_blocked(out);
+}
+
+void Section::render_with_sidechain(std::span<float> out) {
+  const std::size_t total = frames();
+  // Buses are sized once and reused; a section without sidechain
+  // never allocates them.
+  if (kick_bus_.size() != total) kick_bus_.resize(total);
+  if (music_bus_.size() != total) music_bus_.resize(total);
+
+  // Kick bus: mute everything except the kick track.
+  for (std::size_t i = 0; i < sequencer_.track_count(); ++i) {
+    sequencer_.set_track_muted(i, i != sidechain_kick_track_);
+  }
+  render_blocked(std::span<float>(kick_bus_));
+
+  // Music bus: mute only the kick track. render_blocked resets the
+  // sequencer, so the music voices start from the same state as in
+  // the kick pass — the two buses are independent renders.
+  for (std::size_t i = 0; i < sequencer_.track_count(); ++i) {
+    sequencer_.set_track_muted(i, i == sidechain_kick_track_);
+  }
+  render_blocked(std::span<float>(music_bus_));
+
+  // Mix: kick + ducked music. One pass over the samples, one pass
+  // over the kick times (both monotonic).
+  const double sample_rate = sequencer_.sample_rate();
+  std::size_t kick = 0;  // index of the most recent kick at or before i
+  const std::size_t to_render = out.size() < total ? out.size() : total;
+  for (std::size_t i = 0; i < to_render; ++i) {
+    while (kick + 1 < kick_times_.size() && kick_times_[kick + 1] <= i) ++kick;
+    double gain = 1.0;
+    if (!kick_times_.empty() && kick_times_[kick] <= i) {
+      const double t =
+          static_cast<double>(i - kick_times_[kick]) / sample_rate;
+      gain = 1.0 - sidechain_depth_ *
+                         std::exp(-t / sidechain_release_seconds_);
+    }
+    out[i] = kick_bus_[i] + music_bus_[i] * static_cast<float>(gain);
+  }
+  for (std::size_t i = to_render; i < out.size(); ++i) out[i] = 0.0f;
+}
+
+void Section::render_blocked(std::span<float> out) {
+  sequencer_.reset();  // every render starts from the section start
   const std::size_t total = frames();
   const std::size_t to_render = out.size() < total ? out.size() : total;
   const std::size_t frames_per_bar = sequencer_.frames_per_bar();
