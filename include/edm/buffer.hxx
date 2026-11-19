@@ -28,6 +28,21 @@ class Buffer {
 
   void clear() noexcept { std::fill(samples_.begin(), samples_.end(), 0.0f); }
 
+  // Scale so the peak absolute value equals `peak`. A silent buffer
+  // stays silent (no division by zero); a non-positive peak is a
+  // no-op. Never allocates.
+  void normalize(float peak) noexcept {
+    if (peak <= 0.0f) return;
+    float max = 0.0f;
+    for (const float s : samples_) {
+      const float a = s < 0.0f ? -s : s;
+      if (a > max) max = a;
+    }
+    if (max == 0.0f) return;  // silent: nothing to scale
+    const float gain = peak / max;
+    for (float& s : samples_) s *= gain;
+  }
+
   float& operator[](std::size_t i) noexcept { return samples_[i]; }
   float operator[](std::size_t i) const noexcept { return samples_[i]; }
 
