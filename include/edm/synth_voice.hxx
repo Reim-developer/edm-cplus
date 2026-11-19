@@ -43,7 +43,7 @@ template <Wave W>
 class SynthVoice : public Voice {
  public:
   SynthVoice(SynthVoiceConfig config, double sample_rate, Rng rng = Rng(kDefaultSeed)) noexcept
-      : config_(config), sample_rate_(sample_rate), rng_(rng) {
+      : config_(config), sample_rate_(sample_rate), rng_(rng), rng_initial_(rng) {
     envelope_.set_adsr(config.attack_seconds, config.decay_seconds, config.sustain_level,
                        config.release_seconds, sample_rate);
     if (config.filter_cutoff_hz > 0.0) {
@@ -78,6 +78,10 @@ class SynthVoice : public Voice {
     oscillator_.reset();
     envelope_.reset();
     filter_.reset();
+    // Rewind the noise stream too: render -> reset -> render must
+    // reproduce the first render bit-identically, even for noise
+    // voices (the sidechain double-render depends on it).
+    rng_ = rng_initial_;
     velocity_ = 0.0f;
     active_midi_.reset();
   }
@@ -86,6 +90,7 @@ class SynthVoice : public Voice {
   SynthVoiceConfig config_;
   double sample_rate_;
   Rng rng_;
+  Rng rng_initial_;  // the construction Rng, restored by reset()
   Oscillator<W> oscillator_;
   Envelope envelope_;
   Biquad filter_;

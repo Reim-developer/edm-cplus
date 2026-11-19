@@ -51,6 +51,27 @@ class Sequencer {
   // Takes ownership of the voice. Null voices are ignored.
   void add_track(std::unique_ptr<Voice> voice, Pattern pattern, float volume = 1.0f);
 
+  // Mute a track: it neither fires notes nor renders, so its voice
+  // stays idle (a muted noise voice consumes no randomness). Bad
+  // indices are no-ops. Mutes survive reset().
+  void set_track_muted(std::size_t index, bool muted) noexcept;
+  [[nodiscard]] bool is_track_muted(std::size_t index) const noexcept;
+
+  // Set a track's volume (1.0 = as added). Bad indices are no-ops.
+  // This is how automation moves a track's volume at render time.
+  void set_track_volume(std::size_t index, float volume) noexcept;
+
+  // Non-owning access to a track's voice (for bind-time casts) and
+  // pattern (for sidechain kick times). Bad indices return nullptr
+  // / an empty pattern — never a crash.
+  [[nodiscard]] Voice* track_voice(std::size_t index) noexcept;
+  [[nodiscard]] const Pattern& track_pattern(std::size_t index) const noexcept;
+  [[nodiscard]] std::size_t track_count() const noexcept { return tracks_.size(); }
+
+  // The sample rate this sequencer was built with (the fallback
+  // default when the caller passed a non-positive rate).
+  [[nodiscard]] double sample_rate() const noexcept { return sample_rate_; }
+
   // Fill the span from the current playhead, advancing it.
   // Never allocates. An empty span is a no-op; with no tracks the
   // output is silence.
@@ -76,6 +97,7 @@ class Sequencer {
   struct TrackEntry {
     Track track;
     TrackState state;
+    bool muted = false;
   };
 
   // Fire one step's events for every track: note_off for gates
@@ -85,6 +107,7 @@ class Sequencer {
   void fire_track_step(TrackEntry& entry, std::size_t step) noexcept;
 
   std::size_t frames_per_step_ = 0;
+  double sample_rate_ = kDefaultSampleRate;
   std::vector<TrackEntry> tracks_;
   std::size_t step_ = 0;    // current step (global, unbounded)
   std::size_t offset_ = 0;  // samples into the current step

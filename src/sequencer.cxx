@@ -30,6 +30,7 @@ Sequencer::Sequencer(double bpm, double sample_rate) {
   const double safe_bpm = bpm > 0.0 ? bpm : kDefaultBpm;
   const double safe_rate = sample_rate > 0.0 ? sample_rate : kDefaultSampleRate;
   frames_per_step_ = compute_frames_per_step(safe_bpm, safe_rate);
+  sample_rate_ = safe_rate;
 }
 
 void Sequencer::add_track(std::unique_ptr<Voice> voice, Pattern pattern, float volume) {
@@ -41,10 +42,34 @@ void Sequencer::add_track(std::unique_ptr<Voice> voice, Pattern pattern, float v
   fire_track_step(tracks_.back(), step_);  // start now, on the current step
 }
 
+void Sequencer::set_track_muted(std::size_t index, bool muted) noexcept {
+  if (index < tracks_.size()) tracks_[index].muted = muted;
+}
+
+bool Sequencer::is_track_muted(std::size_t index) const noexcept {
+  return index < tracks_.size() && tracks_[index].muted;
+}
+
+void Sequencer::set_track_volume(std::size_t index, float volume) noexcept {
+  if (index < tracks_.size()) tracks_[index].track.volume = volume;
+}
+
+Voice* Sequencer::track_voice(std::size_t index) noexcept {
+  if (index >= tracks_.size()) return nullptr;
+  return tracks_[index].track.voice.get();
+}
+
+const Pattern& Sequencer::track_pattern(std::size_t index) const noexcept {
+  static const Pattern kEmpty(0);
+  if (index >= tracks_.size()) return kEmpty;
+  return tracks_[index].track.pattern;
+}
+
 void Sequencer::render(std::span<float> out) noexcept {
   for (float& s : out) {
     float mix = 0.0f;
     for (auto& entry : tracks_) {
+      if (entry.muted) continue;  // muted tracks do not render
       mix += entry.track.voice->next() * entry.track.volume;
     }
     s = mix;
@@ -72,6 +97,7 @@ void Sequencer::fire_step(std::size_t step) noexcept {
 }
 
 void Sequencer::fire_track_step(TrackEntry& entry, std::size_t step) noexcept {
+  if (entry.muted) return;  // muted tracks fire no notes
   // Gate elapsed? Release the sounding note.
   if (entry.state.active_midi.has_value() &&
       step >= entry.state.start_step + static_cast<std::size_t>(entry.state.length_steps)) {

@@ -274,3 +274,140 @@ TEST(Sequencer, ResetRewinds) {
     EXPECT_FLOAT_EQ(first[i], second[i]) << "sample " << i;
   }
 }
+
+// Reset rewinds the noise stream too: a noise track rendered,
+// reset, and rendered again is bit-identical to the first render.
+// (Without the Rng rewind in SynthVoice::reset, the second render
+// continues the noise stream and every sample differs.)
+TEST(Sequencer, ResetRewindsNoiseVoice) {
+  edm::Sequencer seq(kBpm, kSampleRate);
+  edm::Pattern noise(16);
+  noise.set(0, 60);
+  noise.set(8, 60);
+  edm::SynthVoiceConfig config = plain_config(edm::Wave::Noise);
+  seq.add_track(edm::make_synth_voice(config, kSampleRate, edm::Rng(42)),
+                std::move(noise));
+  edm::Buffer first(seq.frames_per_bar());
+  seq.render(first.data());
+  seq.reset();
+  edm::Buffer second(seq.frames_per_bar());
+  seq.render(second.data());
+  EXPECT_GT(window_peak(first, 0, first.size()), 0.1f);
+  for (std::size_t i = 0; i < first.size(); ++i) {
+    EXPECT_FLOAT_EQ(first[i], second[i]) << "sample " << i;
+  }
+}
+
+// A muted track is excluded from the mix: two tracks with one
+// muted render bit-identically to the unmuted track alone.
+TEST(Sequencer, MuteExcludesTrack) {
+  edm::Sequencer seq(kBpm, kSampleRate);
+  edm::Pattern a(16);
+  a.set(0, 69);
+  add_note_track(seq, std::move(a));
+  edm::Pattern b(16);
+  b.set(0, 76);
+  add_note_track(seq, std::move(b));
+  seq.set_track_muted(1, true);
+  edm::Buffer muted(seq.frames_per_bar());
+  seq.render(muted.data());
+
+  edm::Sequencer alone(kBpm, kSampleRate);
+  edm::Pattern only(16);
+  only.set(0, 69);
+  add_note_track(alone, std::move(only));
+  edm::Buffer expected(alone.frames_per_bar());
+  alone.render(expected.data());
+
+  for (std::size_t i = 0; i < muted.size(); ++i) {
+    EXPECT_FLOAT_EQ(muted[i], expected[i]) << "sample " << i;
+  }
+}
+
+// A muted voice stays idle: a noise track muted for a whole render
+// consumes no randomness — after unmuting + reset, its render is
+// bit-identical to a fresh sequencer's.
+TEST(Sequencer, MutedTrackVoiceStaysIdle) {
+  auto render_muted_then_live = []() {
+    edm::Sequencer seq(kBpm, kSampleRate);
+    edm::Pattern noise(16);
+    noise.set(0, 60);
+    edm::SynthVoiceConfig config = plain_config(edm::Wave::Noise);
+    seq.add_track(edm::make_synth_voice(config, kSampleRate, edm::Rng(7)),
+                  std::move(noise));
+    seq.set_track_muted(0, true);
+    edm::Buffer muted(seq.frames_per_bar());
+    seq.render(muted.data());  // silent; the voice never sounds
+    EXPECT_TRUE(window_silent(muted, 0, muted.size()));
+    seq.set_track_muted(0, false);
+    seq.reset();
+    edm::Buffer live(seq.frames_per_bar());
+    seq.render(live.data());
+    return live;
+  };
+
+  edm::Sequencer fresh(kBpm, kSampleRate);
+  edm::Pattern noise(16);
+  noise.set(0, 60);
+  edm::SynthVoiceConfig config = plain_config(edm::Wave::Noise);
+  fresh.add_track(edm::make_synth_voice(config, kSampleRate, edm::Rng(7)),
+                  std::move(noise));
+  edm::Buffer expected(fresh.frames_per_bar());
+  fresh.render(expected.data());
+
+  const edm::Buffer actual = render_muted_then_live();
+  EXPECT_GT(window_peak(actual, 0, actual.size()), 0.1f);
+  for (std::size_t i = 0; i < expected.size(); ++i) {
+    EXPECT_FLOAT_EQ(actual[i], expected[i]) << "sample " << i;
+  }
+}
+
+// set_track_volume moves a track's volume at render time: 0.0 is
+// silence, back to 1.0 is the full track again.
+TEST(Sequencer, SetTrackVolume) {
+  edm::Sequencer seq(kBpm, kSampleRate);
+  edm::Pattern pattern(16);
+  pattern.set(0, 69);
+  add_note_track(seq, std::move(pattern));
+  seq.set_track_volume(0, 0.0f);
+  edm::Buffer silent(seq.frames_per_bar());
+  seq.render(silent.data());
+  EXPECT_TRUE(window_silent(silent, 0, silent.size()));
+  seq.reset();
+  seq.set_track_volume(0, 1.0f);
+  edm::Buffer loud(seq.frames_per_bar());
+  seq.render(loud.data());
+  EXPECT_GT(window_peak(loud, 0, loud.size()), 0.1f);
+}
+
+// Accessors: counts, voices, patterns, sample rate — and bad
+// indices are safe no-ops / nulls, never crashes.
+TEST(Sequencer, Accessors) {
+  edm::Sequencer seq(kBpm, kSampleRate);
+  EXPECT_EQ(seq.track_count(), 0u);
+  EXPECT_EQ(seq.track_voice(0), nullptr);
+  EXPECT_EQ(seq.track_pattern(0).size(), 0);
+  EXPECT_FALSE(seq.is_track_muted(0));
+  EXPECT_DOUBLE_EQ(seq.sample_rate(), kSampleRate);
+
+  edm::Pattern pattern(16);
+  pattern.set(0, 69);
+  add_note_track(seq, std::move(pattern));
+  EXPECT_EQ(seq.track_count(), 1u);
+  EXPECT_NE(seq.track_voice(0), nullptr);
+  EXPECT_EQ(seq.track_pattern(0).size(), 16);
+  EXPECT_TRUE(seq.track_pattern(0).at(0).note.has_value());
+  EXPECT_EQ(seq.track_voice(1), nullptr);
+  EXPECT_EQ(seq.track_pattern(1).size(), 0);
+
+  seq.set_track_muted(5, true);  // bad index: no-op, no crash
+  seq.set_track_volume(5, 0.0f);
+  EXPECT_FALSE(seq.is_track_muted(5));
+  seq.set_track_muted(0, true);
+  EXPECT_TRUE(seq.is_track_muted(0));
+  seq.set_track_muted(0, false);
+  EXPECT_FALSE(seq.is_track_muted(0));
+
+  const edm::Sequencer bad_rate(kBpm, 0.0);
+  EXPECT_DOUBLE_EQ(bad_rate.sample_rate(), 44100.0);
+}
