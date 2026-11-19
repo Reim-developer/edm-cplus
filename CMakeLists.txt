@@ -34,6 +34,10 @@ if(EDM_BUILD_EXAMPLES)
   add_executable(tone examples/tone.cxx)
   target_link_libraries(tone PRIVATE edm)
   edm_warnings(tone)
+
+  add_executable(sfx_demo examples/sfx_demo.cxx)
+  target_link_libraries(sfx_demo PRIVATE edm)
+  edm_warnings(sfx_demo)
 endif()
 
 if(EDM_BUILD_TESTS)
@@ -76,5 +80,7 @@ if(EDM_BUILD_TESTS)
     add_test(NAME wav_validity
       COMMAND check_wav ${CMAKE_CURRENT_BINARY_DIR}/tone.wav 44100 1.0)
     set_tests_properties(wav_validity PROPERTIES DEPENDS tone_renders)
+
+    add_test(NAME sfx_demo COMMAND sfx_demo ${CMAKE_CURRENT_BINARY_DIR})
   endif()
 endif()

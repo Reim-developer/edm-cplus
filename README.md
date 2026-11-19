@@ -4,9 +4,18 @@
 
 Create electronic dance music with C++ code.
 
-v0.0.1 is the base: the synth core everything else stands on. No
-front-ends yet — no SFX presets, no sequencer, no arrangement, no
-playback. Those come as later versions, built on this core.
+v0.0.2 adds SFX — the game-audio front-end's first layer — on top of
+the v0.0.1 synth core. No sequencer, arrangement, or playback yet.
+Those come as later versions, built on this core.
+
+## v0.0.2 — SFX
+
+- `edm::SfxParams` — wave + linear frequency slide + AD envelope,
+  plain struct, designated initializers.
+- `edm::render_sfx` — renders an effect into a caller-sized span.
+- Presets `edm::sfx::jump`, `coin`, `laser`, `explosion` — the
+  spike's proven values.
+- `edm::randomize_sfx` — sfxr-style random params from a seeded Rng.
 
 ## v0.0.1 — the synth core
 
@@ -32,11 +41,15 @@ cmake --build build
 ctest --test-dir build
 ```
 
-Requires CMake 3.20+ and a C++20 compiler (gcc 13+ / clang 18+
-verified). The example renders a one-second tone:
+Requires CMake 3.24+ and a C++20 compiler (gcc 13+ / clang 18+
+verified). Tests use GoogleTest, fetched automatically at configure
+time (needs network). No Python needed anywhere.
+
+The examples render a one-second tone and the SFX presets:
 
 ```sh
 ./build/tone tone.wav
+./build/sfx_demo out/
 ```
 
 ## License
