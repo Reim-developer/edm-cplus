@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.24)
-project(edm-cplus VERSION 0.0.2 LANGUAGES CXX)
+project(edm-cplus VERSION 0.0.3 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -41,6 +41,10 @@ if(EDM_BUILD_EXAMPLES)
   add_executable(sfx_demo examples/sfx_demo.cxx)
   target_link_libraries(sfx_demo PRIVATE edm)
   edm_warnings(sfx_demo)
+
+  add_executable(sequence_demo examples/sequence_demo.cxx)
+  target_link_libraries(sequence_demo PRIVATE edm)
+  edm_warnings(sequence_demo)
 endif()
 
 if(EDM_BUILD_TESTS)
@@ -88,5 +92,7 @@ if(EDM_BUILD_TESTS)
     set_tests_properties(wav_validity PROPERTIES DEPENDS tone_renders)
 
     add_test(NAME sfx_demo COMMAND sfx_demo ${CMAKE_CURRENT_BINARY_DIR})
+
+    add_test(NAME sequence_demo COMMAND sequence_demo ${CMAKE_CURRENT_BINARY_DIR})
   endif()
 endif()
