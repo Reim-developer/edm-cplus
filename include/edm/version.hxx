@@ -1,6 +1,6 @@
 #pragma once
 
-// edm-cplus version. v0.0.3: sequencer + patterns.
+// edm-cplus version. v0.0.4: SFX plugin refactor + CHANGELOG.
 
 namespace edm {
 
@@ -10,7 +10,7 @@ struct Version {
   int patch;
 };
 
-inline constexpr Version kVersion{0, 0, 3};
-inline constexpr const char* kVersionString = "0.0.3";
+inline constexpr Version kVersion{0, 0, 4};
+inline constexpr const char* kVersionString = "0.0.4";
 
 } // namespace edm

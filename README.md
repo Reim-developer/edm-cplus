@@ -39,6 +39,54 @@ seq.render(out.data());
 edm::write_wav("loop.wav", out.data(), 44100);
 ```
 
+## SFX — plugins, not presets
+
+An SFX is anything with `float next() noexcept`. The library's only
+job is to pull samples from a generator you define into a buffer —
+it never knows what the sound is, because the sound lives entirely
+in your code:
+
+```cpp
+#include <cmath>
+
+#include "edm/buffer.hxx"
+#include "edm/sfx.hxx"
+#include "edm/wav.hxx"
+
+// Your generator — the library has no idea what a "blip" is.
+struct Blip {
+  double phase = 0.0;
+  double increment = 660.0 / 44100;
+  float next() noexcept {
+    const float v = static_cast<float>(std::sin(2.0 * 3.141592653589793 * phase));
+    phase += increment;
+    if (phase >= 1.0) phase -= 1.0;
+    return v;
+  }
+};
+
+edm::Buffer out(4410);
+Blip blip;
+edm::render_sfx(blip, out.data());
+edm::write_wav("blip.wav", out.data(), 44100);
+```
+
+`edm::SlideSfx` is one built-in generator (oscillator + linear
+frequency slide + AD envelope — the old preset model), for when that
+shape is what you want. `edm::SfxParams` is its parameter bundle,
+`edm::sfx_frames` sizes the buffer, `edm::randomize_sfx` makes
+sfxr-style random params, and the params-based `render_sfx` overload
+renders a SlideSfx for you. The named presets (`jump`, `coin`,
+`laser`, `explosion`) left the library in 0.0.4 — they live as local
+functions in `examples/sfx_demo.cxx`.
+
+Why templates here, and the `Voice` interface for notes? An SFX
+render call takes ONE sound, so compile-time polymorphism costs
+nothing and inlines — no vtable, no indirection. The Sequencer holds
+heterogeneous voices in ONE container, so notes need runtime
+polymorphism (`Voice` + `std::unique_ptr`). Two mechanisms, each for
+a principled reason.
+
 ## What is in the library
 
 - **Synth core** — `edm::Rng` (deterministic xorshift32),
@@ -46,10 +94,9 @@ edm::write_wav("loop.wav", out.data(), 44100);
   `edm::Envelope` (AD / ADSR), `edm::Biquad` (RBJ lowpass) +
   `edm::Highpass` (one-pole), `edm::Buffer` (owning PCM float
   buffer), `edm::write_wav` (16-bit mono WAV writer).
-- **SFX** — `edm::SfxParams` + `edm::render_sfx`: sfxr-style
-  parameterized one-shot effects (wave + linear frequency slide +
-  AD envelope); `edm::randomize_sfx` makes random ones from a
-  seeded Rng.
+- **SFX** — plugins, not presets: any `float next() noexcept`
+  generator renders through `edm::render_sfx`; `edm::SlideSfx` is
+  one built-in generator. See the SFX section above.
 - **Sequencer** — `edm::Pattern` (16th-note step loops),
   `edm::Voice` / `edm::SynthVoice` (note interface + oscillator
   voice), `edm::Sequencer`: notes scheduled at a BPM,
